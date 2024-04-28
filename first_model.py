@@ -1,7 +1,7 @@
 import os
 import tensorflow as tf
 from keras.models import Sequential
-from keras.layers import Flatten, Dense, Conv2D, MaxPooling2D
+from keras.layers import Flatten, Dense, Conv2D, MaxPooling2D, AveragePooling2D
 from keras.utils import to_categorical
 import cv2
 import numpy as np
@@ -27,6 +27,16 @@ class MnistClassifier:
     def train_model(self, model_name, filters, filter_size, activation, compile_optimizer, compile_loss, fit_epochs, fit_batch_size):
 
         model = Sequential();
+
+        # LeNet-5 Implementation
+        # model.add(Conv2D(filters=6, strides=(1,1), kernel_size=(5,5), activation='tanh', input_shape=(28, 28, 1)))
+        # model.add(AveragePooling2D(pool_size=(2,2), strides=(2,2)))
+        # model.add(Conv2D(filters=6, strides=(1,1), kernel_size=(5,5), activation='tanh'))
+        # model.add(AveragePooling2D(pool_size=(2,2), strides=(2,2)))
+        # model.add(Dense(units=120, activation='tanh'))
+        # model.add(Flatten())
+        # model.add(Dense(units=84, activation='tanh'))
+        # model.add(Dense(units=10, activation='softmax'))
 
         # Dodanie warstwy konwolucyjnej CNN
         model.add(Conv2D(filters=filters, kernel_size=filter_size, activation=activation, input_shape=(28, 28, 1)))
