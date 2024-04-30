@@ -45,7 +45,7 @@ class MnistClassifier:
         # model.add(Dropout(0.5))
         # model.add(Dense(units=4096, activation='relu'))
         # model.add(Dropout(0.5))
-        # model.add(Dense(units=10, activation='softmax')) # 1000 - liczba klas w ImageNet
+        # model.add(Dense(units=10, activation='softmax')) # 10 - liczba klas w ImageNet
 
 
         # Dodanie warstwy konwolucyjnej CNN
