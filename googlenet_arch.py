@@ -1,12 +1,31 @@
 import os
 import tensorflow as tf
-from keras.models import Sequential
-from keras.layers import Flatten, Dense, Conv2D, MaxPooling2D, Dropout
+from keras.models import Model
+from keras.layers import Flatten, Dense, Conv2D, MaxPooling2D, Dropout, Concatenate, Input, AveragePooling2D
 from keras.utils import to_categorical
 import cv2
 import numpy as np
 
 class MnistClassifier:
+    def inception_module(self, x, filters):
+        # 1x1 conv
+        conv1 = Conv2D(filters[0], (1, 1), padding='same', activation='relu')(x)
+
+        # 1x1 conv -> 3x3 conv
+        conv3 = Conv2D(filters[1], (1, 1), padding='same', activation='relu')(x)
+        conv3 = Conv2D(filters[2], (3, 3), padding='same', activation='relu')(conv3)
+
+        # 1x1 conv -> 5x5 conv
+        conv5 = Conv2D(filters[3], (1, 1), padding='same', activation='relu')(x)
+        conv5 = Conv2D(filters[4], (5, 5), padding='same', activation='relu')(conv5)
+
+        # 3x3 max pooling -> 1x1 conv
+        pool = MaxPooling2D((3, 3), strides=(1, 1), padding='same')(x)
+        pool = Conv2D(filters[5], (1, 1), padding='same', activation='relu')(pool)
+
+        # concatenate filters
+        out = Concatenate()([conv1, conv3, conv5, pool])
+        return out
 
     def load_mnist_png(self, data_path):
         images = []
@@ -26,43 +45,36 @@ class MnistClassifier:
     
     def train_model(self, model_name, filters, filter_size, activation, compile_optimizer, compile_loss, fit_epochs, fit_batch_size):
 
-        model = Sequential();
+        input_layer = Input(shape=(224, 224, 3))
 
-        # AlexNet Implementation
-        # model.add(Conv2D(filters=96, kernel_size=(11,11), strides=(4,4), activation='relu', input_shape=(227, 227, 3)))
-        # model.add(MaxPooling2D(pool_size=(3,3), strides=(2,2)))
+        # Initial convolution and pooling layers
+        x = Conv2D(64, (7, 7), strides=(2, 2), padding='same', activation='relu')(input_layer)
+        x = MaxPooling2D((3, 3), strides=(2, 2), padding='same')(x)
 
-        # model.add(Conv2D(filters=256, kernel_size=(5,5), strides=(1,1), padding='same', activation='relu'))
-        # model.add(MaxPooling2D(pool_size=(3,3), strides=(2,2)))
+        # Inception modules
+        x = self.inception_module(x, [64, 96, 128, 16, 32, 32])
+        x = self.inception_module(x, [128, 128, 192, 32, 96, 64])
+        x = MaxPooling2D((3, 3), strides=(2, 2), padding='same')(x)
 
-        # model.add(Conv2D(filters=384, kernel_size=(3,3), strides=(1,1), padding='same', activation='relu'))
-        # model.add(Conv2D(filters=384, kernel_size=(3,3), strides=(1,1), padding='same', activation='relu'))
-        # model.add(Conv2D(filters=256, kernel_size=(3,3), strides=(1,1), padding='same', activation='relu'))
-        # model.add(MaxPooling2D(pool_size=(3,3), strides=(2,2)))
+        x = self.inception_module(x, [192, 96, 208, 16, 48, 64])
+        x = self.inception_module(x, [160, 112, 224, 24, 64, 64])
+        x = self.inception_module(x, [128, 128, 256, 24, 64, 64])
+        x = self.inception_module(x, [112, 144, 288, 32, 64, 64])
+        x = self.inception_module(x, [256, 160, 320, 32, 128, 128])
+        x = MaxPooling2D((3, 3), strides=(2, 2), padding='same')(x)
 
-        # model.add(Flatten())
-        # model.add(Dense(units=4096, activation='relu'))
-        # model.add(Dropout(0.5))
-        # model.add(Dense(units=4096, activation='relu'))
-        # model.add(Dropout(0.5))
-        # model.add(Dense(units=10, activation='softmax')) # 10 - liczba klas w ImageNet
+        x = self.inception_module(x, [256, 160, 320, 32, 128, 128])
+        x = self.inception_module(x, [384, 192, 384, 48, 128, 128])
 
+        # Finishing layers
+        x = AveragePooling2D((7, 7), strides=(1, 1))(x)
+        x = Flatten()(x)
+        x = Dropout(0.4)(x)
+        x = Dense(1000, activation='softmax')(x)  # 1000 classes in ImageNet
 
-        # Dodanie warstwy konwolucyjnej CNN
-        model.add(Conv2D(filters=filters, kernel_size=filter_size, activation=activation, input_shape=(28, 28, 1)))
-
-        # Dodanie warstwy max-pooling
-        model.add(MaxPooling2D((2, 2)))
-
-        # Spłaszcz dane
-        model.add(Flatten())
-
-        # Dodaj warstwy ukryte
-        model.add(Dense(128, activation='relu'))
-        model.add(Dense(64, activation='relu'))
-
-        # Dodaj warstwę wyjściową
-        model.add(Dense(10, activation='softmax'))
+        # Create model
+        model = Model(inputs=input_layer, outputs=x)
+        model.summary()
 
         model.compile(optimizer=compile_optimizer, loss=compile_loss, metrics=['accuracy'])
 
