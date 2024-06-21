@@ -8,6 +8,7 @@ from keras.utils import to_categorical
 import cv2
 import numpy as np
 import matplotlib.pyplot as plt
+import pandas as pd
 from PIL import Image
 import time
 from pynvml import *
@@ -18,10 +19,43 @@ class MnistClassifier:
         # Inicjalizacja NVML
         nvmlInit()
         self.device_count = nvmlDeviceGetCount()
+        self.gpu_usage_data = []
     
     def __del__(self):
         # Zamykanie NVML przy zniszczeniu obiektu
         nvmlShutdown()
+
+    def display_history(self, history):
+        pd.DataFrame(history).plot(figsize=(8,5))
+        plt.grid(True)
+        plt.gca().set_ylim(0,1)
+        plt.savefig('out/history.png')
+        plt.show()
+
+    def display_combined_history(self, history, gpu_usage_data):
+        # Tworzenie wykresu łączonego dla historii trenowania i danych GPU
+        history_df = pd.DataFrame(history)
+        gpu_usage_df = pd.DataFrame(gpu_usage_data)
+        
+        fig, ax1 = plt.subplots(figsize=(8, 5))
+
+        ax1.set_xlabel('Epoch')
+        ax1.set_ylabel('Accuracy / Loss')
+        ax1.plot(history_df.index, history_df['accuracy'], 'b-', label='Accuracy')
+        ax1.plot(history_df.index, history_df['val_accuracy'], 'g-', label='Validation Accuracy')
+        ax1.plot(history_df.index, history_df['loss'], 'r-', label='Loss')
+        ax1.plot(history_df.index, history_df['val_loss'], 'y-', label='Validation Loss')
+        ax1.legend(loc='upper left')
+        
+        ax2 = ax1.twinx()
+        ax2.set_ylabel('GPU Utilization (%)')
+        ax2.plot(gpu_usage_df.index, gpu_usage_df['gpu_utilization'], 'k-', label='GPU Utilization')
+        ax2.legend(loc='upper right')
+
+        fig.tight_layout()
+        plt.grid(True)
+        plt.savefig('out/combined_history.png')
+        plt.show()
 
     def load_mnist_png(self, data_path):
         images = []
@@ -76,8 +110,13 @@ class MnistClassifier:
     
     def log_gpu_usage(self, epoch):
         gpu_usages = self.get_gpu_usage()
-        for usage in gpu_usages:
-            print(f"Epoch {epoch}: GPU {usage['gpu']}: Memory Total: {usage['memory_total']} | Memory Free: {usage['memory_free']} | Memory Used: {usage['memory_used']} | GPU Utilization: {usage['gpu_utilization']}% | Memory Utilization: {usage['memory_utilization']}%")
+        usage_data = {
+            'epoch': epoch,
+            'gpu_utilization': gpu_usages[0]['gpu_utilization'],
+            'memory_utilization': gpu_usages[0]['memory_utilization']
+        }
+        self.gpu_usage_data.append(usage_data)
+        print(f"Epoch {epoch}: GPU {gpu_usages[0]['gpu']}: Memory Total: {gpu_usages[0]['memory_total']} | Memory Free: {gpu_usages[0]['memory_free']} | Memory Used: {gpu_usages[0]['memory_used']} | GPU Utilization: {gpu_usages[0]['gpu_utilization']}% | Memory Utilization: {gpu_usages[0]['memory_utilization']}%")
 
 
     
@@ -166,9 +205,24 @@ class MnistClassifier:
         # print("Kształt obrazu:", image.shape)
         # print("Etykieta:", labels[0])
 
+        full_history = {
+            'accuracy': [],
+            'loss': [],
+            'val_accuracy': [],
+            'val_loss': []
+        }
+
         for epoch in range(fit_epochs):
-            model.fit(train_generator, steps_per_epoch=train_generator.samples // fit_batch_size, epochs=1, validation_data=test_generator)
+            history = model.fit(train_generator, steps_per_epoch=train_generator.samples // fit_batch_size, epochs=1, validation_data=test_generator)
             self.log_gpu_usage(epoch + 1)
+            
+            full_history['accuracy'].append(history.history['accuracy'][0])
+            full_history['loss'].append(history.history['loss'][0])
+            full_history['val_accuracy'].append(history.history['val_accuracy'][0])
+            full_history['val_loss'].append(history.history['val_loss'][0])
+
+        self.display_history(full_history)
+        self.display_combined_history(full_history, self.gpu_usage_data)
 
         # model.fit(train_generator, steps_per_epoch=train_generator.samples // fit_batch_size, epochs=fit_epochs, validation_data=test_generator)
 
