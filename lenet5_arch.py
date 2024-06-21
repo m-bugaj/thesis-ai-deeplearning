@@ -2,7 +2,8 @@ import os
 import tensorflow as tf
 from keras.models import Sequential
 from keras.layers import Flatten, Dense, Conv2D, MaxPooling2D, AveragePooling2D, Dropout
-from keras.preprocessing.image import ImageDataGenerator
+# from keras.api.preprocessing.image import ImageDataGenerator
+from keras_preprocessing.image import ImageDataGenerator
 from keras.layers import BatchNormalization
 from keras.utils import to_categorical
 import cv2
@@ -12,6 +13,8 @@ import pandas as pd
 from PIL import Image
 import time
 from pynvml import *
+from keras.callbacks import TensorBoard
+import datetime
 
 class MnistClassifier:
 
@@ -74,24 +77,30 @@ class MnistClassifier:
         return np.array(images), np.array(labels)
     
     # Ta część została dodana w celu optymalizacji zbioru danych do architekury LeNet-5. Z racji, że architektura wymaga małych rozmiarów obrazów 32x32, postanowiono najpierw wstępnie przeskalować obraz do wartości o zadowalającej jakości, a następnie przyciąć obraz do wartości 32x32. Działa to głównie wtedy gdy wykrywany obiekt znajduje się na środku obrazu.
-    def preprocess_image(self, image, seed=None):
-        # Konwersja do PIL Image, jeśli to konieczne
-        if not isinstance(image, Image.Image):
-            image = Image.fromarray(image.astype(np.uint8))
-        
-        # Przeskalowanie do 50x50
-        resized_image = image.resize((55, 55))
-        
+    def preprocess_image(self, image):
+        # Upewnienie się, że obraz jest typu float32 i znormalizowany
+        image = image.astype(np.float32) / 255.0
+
+        # Przekształć do skali szarości, jeśli nie jest
+        if len(image.shape) == 3 and image.shape[2] == 3:
+            image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+
+        # Przeskalowanie do 55x55
+        resized_image = cv2.resize(image, (55, 55))
+
         # Przycięcie do 32x32 (z góry, dołu, lewej i prawej)
-        width, height = resized_image.size
+        width, height = resized_image.shape[1], resized_image.shape[0]
         left = (width - 32) // 2
         top = (height - 32) // 2
         right = left + 32
         bottom = top + 32
-        cropped_image = resized_image.crop((left, top, right, bottom))
-        
-        return np.array(cropped_image) / 255.0  # Normalizacja do [0, 1]
-    
+        cropped_image = resized_image[top:bottom, left:right]
+
+        # Upewnienie się, że obraz ma tylko jeden kanał
+        cropped_image = np.expand_dims(cropped_image, axis=-1)
+
+        return cropped_image
+
     def get_gpu_usage(self):
         gpu_usages = []
         for i in range(self.device_count):
@@ -170,6 +179,7 @@ class MnistClassifier:
             target_size=(32, 32),  # Update target_size to (32, 32)
             batch_size=fit_batch_size,
             class_mode='categorical',
+            color_mode='grayscale',
             shuffle=True  # Ensure shuffling of data
         )
 
@@ -178,8 +188,19 @@ class MnistClassifier:
             target_size=(32, 32),  # Update target_size to (32, 32)
             batch_size=fit_batch_size,
             class_mode='categorical',
+            color_mode='grayscale',
             shuffle=False  # No need to shuffle test data
         )
+
+        # Konfiguracja TensorBoard
+        log_dir = os.path.join("logs", "fit", datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
+        tensorboard_callback = TensorBoard(log_dir=log_dir, histogram_freq=1)
+
+        image_callback = TensorBoardImageCallback(log_dir, train_generator, test_generator)
+
+        # Konfiguracja TensorFlow Profiler
+        profile_dir = os.path.join(log_dir, 'profiler')
+        tf.profiler.experimental.start(profile_dir)
         
         # # Pobieranie jednej partii obrazów i etykiet
         # images, labels = next(train_generator)
@@ -213,13 +234,16 @@ class MnistClassifier:
         }
 
         for epoch in range(fit_epochs):
-            history = model.fit(train_generator, steps_per_epoch=train_generator.samples // fit_batch_size, epochs=1, validation_data=test_generator)
+            history = model.fit(train_generator, steps_per_epoch=train_generator.samples // fit_batch_size, epochs=1, validation_data=test_generator, callbacks = [tensorboard_callback, image_callback])
             self.log_gpu_usage(epoch + 1)
             
             full_history['accuracy'].append(history.history['accuracy'][0])
             full_history['loss'].append(history.history['loss'][0])
             full_history['val_accuracy'].append(history.history['val_accuracy'][0])
             full_history['val_loss'].append(history.history['val_loss'][0])
+
+        # Zatrzymanie TensorFlow Profiler
+        tf.profiler.experimental.stop()
 
         self.display_history(full_history)
         self.display_combined_history(full_history, self.gpu_usage_data)
@@ -240,3 +264,23 @@ class MnistClassifier:
         score = model.evaluate(test_generator, verbose=0)
         print('Test loss:', score[0])
         print('Test accuracy:', score[1])
+
+
+
+class TensorBoardImageCallback(tf.keras.callbacks.Callback):
+    def __init__(self, log_dir, train_data, test_data):
+        super().__init__()
+        self.log_dir = log_dir
+        self.train_data = train_data
+        self.test_data = test_data
+        self.writer = tf.summary.create_file_writer(os.path.join(log_dir, 'images'))
+
+    def on_epoch_end(self, epoch, logs=None):
+        # Wybierz kilka przykładów z danych treningowych i walidacyjnych
+        train_images, _ = next(self.train_data)
+        test_images, _ = next(self.test_data)
+        
+        # Przygotuj obrazy do zapisu
+        with self.writer.as_default():
+            tf.summary.image('Training Images', train_images, step=epoch)
+            tf.summary.image('Test Images', test_images, step=epoch)
