@@ -16,6 +16,7 @@ from pynvml import *
 from keras.callbacks import TensorBoard
 import datetime
 import psutil
+import time
 
 class MnistClassifier:
 
@@ -200,11 +201,11 @@ class MnistClassifier:
         tensorboard_callback = TensorBoard(log_dir=log_dir, histogram_freq=6)
 
         # Callbacks definitions
-
         system_usage_logger = SystemUsageLogger(log_dir=log_dir, log_frequency=3)
         image_callback = TensorBoardImageCallback(log_dir, train_generator, test_generator, log_frequency=3)
         log_gpu_usage_callback = GPUUsageLogger()
         profiler_callback = ProfilerCallback(log_dir=log_dir, log_frequency=6)
+        measuring_time = MeasuringTime()
         
         # # Pobieranie jednej partii obrazów i etykiet
         # images, labels = next(train_generator)
@@ -230,13 +231,13 @@ class MnistClassifier:
         # print("Kształt obrazu:", image.shape)
         # print("Etykieta:", labels[0])
 
-        
+        start_time = time.time()
 
         history = model.fit(train_generator, 
                                 steps_per_epoch=train_generator.samples // fit_batch_size, 
                                 epochs=fit_epochs, validation_data=test_generator, 
-                                callbacks = [tensorboard_callback, image_callback, system_usage_logger, log_gpu_usage_callback])
-        
+                                callbacks = [profiler_callback, measuring_time, tensorboard_callback, image_callback, system_usage_logger, log_gpu_usage_callback])
+        stop_time = time.time()
         # Pobieranie danych z `gpu_logger` po zakończeniu trenowania
         gpu_usage_data = log_gpu_usage_callback.on_train_end()
 
@@ -244,51 +245,8 @@ class MnistClassifier:
         self.display_history(history.history)
         self.display_combined_history(history.history, gpu_usage_data)
 
-        full_history = {
-            'accuracy': [],
-            'loss': [],
-            'val_accuracy': [],
-            'val_loss': []
-        }
-
-        # full_history['accuracy'].append(history.history['accuracy'][0])
-        # full_history['loss'].append(history.history['loss'][0])
-        # full_history['val_accuracy'].append(history.history['val_accuracy'][0])
-        # full_history['val_loss'].append(history.history['val_loss'][0])
-
-        # self.display_history(full_history)
-        # self.display_combined_history(full_history, self.gpu_usage_data)
-
-
-
-
-
-        # for epoch in range(fit_epochs):
-        #     print(f"Starting epoch {epoch + 1}")
-
-        #     system_usage_logger = SystemUsageLogger(log_dir=log_dir, log_frequency=3, epoch=epoch+1)
-
-        #     image_callback = TensorBoardImageCallback(log_dir, train_generator, test_generator, log_frequency=3, epoch=epoch+1)
-            
-        #     history = model.fit(train_generator, 
-        #                         steps_per_epoch=train_generator.samples // fit_batch_size, 
-        #                         epochs=1, validation_data=test_generator, 
-        #                         callbacks = [tensorboard_callback, image_callback, system_usage_logger, log_gpu_usage_callback])
-        #     # self.log_gpu_usage(epoch + 1)
-
-        #     full_history['accuracy'].append(history.history['accuracy'][0])
-        #     full_history['loss'].append(history.history['loss'][0])
-        #     full_history['val_accuracy'].append(history.history['val_accuracy'][0])
-        #     full_history['val_loss'].append(history.history['val_loss'][0])
-
-
-        # # Zatrzymanie TensorFlow Profiler
-        # tf.profiler.experimental.stop()
 
         
-
-        # model.fit(train_generator, steps_per_epoch=train_generator.samples // fit_batch_size, epochs=fit_epochs, validation_data=test_generator)
-
         # Generowanie ścieżki do pliku JSON
         json_file_path = os.path.join('models', 'model' + model_name + '.json')
         weights_file_path = os.path.join('models', 'model' + model_name + '.weights.h5')
@@ -303,7 +261,7 @@ class MnistClassifier:
         score = model.evaluate(test_generator, verbose=0)
         print('Test loss:', score[0])
         print('Test accuracy:', score[1])
-
+        print("Total time: {}".format(stop_time-start_time))
 
 
 class TensorBoardImageCallback(tf.keras.callbacks.Callback):
@@ -407,18 +365,20 @@ class ProfilerCallback(tf.keras.callbacks.Callback):
             # Zatrzymanie TensorFlow Profiler
             tf.profiler.experimental.stop()
 
-# class ProfilerCallback(tf.keras.callbacks.Callback):
-#     def __init__(self, log_dir):
-#         super(ProfilerCallback, self).__init__()
-#         self.full_history = {
-#             'accuracy': [],
-#             'loss': [],
-#             'val_accuracy': [],
-#             'val_loss': []
-#         }
+class MeasuringTime(tf.keras.callbacks.Callback):
+    def __init__(self):
+        super(MeasuringTime, self).__init__()
+        self.start_time = 0
+        self.total_time = 0
 
-
-#     def on_epoch_begin(self, epoch, logs=None):
-
+    def on_epoch_begin(self, epoch, logs=None):
+        self.start_time = time.time()
     
-#     def on_epoch_end(self, epoch, logs=None):
+    def on_epoch_end(self, epoch, logs=None):
+        end_time = time.time()
+        execution_time = end_time - self.start_time
+        self.total_time += execution_time
+
+    def on_train_end(self, logs=None):
+        print("Training time: {}".format(self.total_time))
+        return self.total_time
