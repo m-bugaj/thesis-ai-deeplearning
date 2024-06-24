@@ -15,18 +15,19 @@ import time
 from pynvml import *
 from keras.callbacks import TensorBoard
 import datetime
+import psutil
 
 class MnistClassifier:
 
-    def __init__(self):
-        # Inicjalizacja NVML
-        nvmlInit()
-        self.device_count = nvmlDeviceGetCount()
-        self.gpu_usage_data = []
+    # def __init__(self):
+    #     # Inicjalizacja NVML
+    #     nvmlInit()
+    #     self.device_count = nvmlDeviceGetCount()
+    #     self.gpu_usage_data = []
     
-    def __del__(self):
-        # Zamykanie NVML przy zniszczeniu obiektu
-        nvmlShutdown()
+    # def __del__(self):
+    #     # Zamykanie NVML przy zniszczeniu obiektu
+    #     nvmlShutdown()
 
     def display_history(self, history):
         pd.DataFrame(history).plot(figsize=(8,5))
@@ -118,14 +119,16 @@ class MnistClassifier:
         return gpu_usages
     
     def log_gpu_usage(self, epoch):
-        gpu_usages = self.get_gpu_usage()
-        usage_data = {
-            'epoch': epoch,
-            'gpu_utilization': gpu_usages[0]['gpu_utilization'],
-            'memory_utilization': gpu_usages[0]['memory_utilization']
-        }
-        self.gpu_usage_data.append(usage_data)
-        print(f"Epoch {epoch}: GPU {gpu_usages[0]['gpu']}: Memory Total: {gpu_usages[0]['memory_total']} | Memory Free: {gpu_usages[0]['memory_free']} | Memory Used: {gpu_usages[0]['memory_used']} | GPU Utilization: {gpu_usages[0]['gpu_utilization']}% | Memory Utilization: {gpu_usages[0]['memory_utilization']}%")
+
+        def on_epoch_end(self, epoch, logs=None):
+            gpu_usages = self.get_gpu_usage()
+            usage_data = {
+                'epoch': epoch,
+                'gpu_utilization': gpu_usages[0]['gpu_utilization'],
+                'memory_utilization': gpu_usages[0]['memory_utilization']
+            }
+            self.gpu_usage_data.append(usage_data)
+            print(f"Epoch {epoch}: GPU {gpu_usages[0]['gpu']}: Memory Total: {gpu_usages[0]['memory_total']} | Memory Free: {gpu_usages[0]['memory_free']} | Memory Used: {gpu_usages[0]['memory_used']} | GPU Utilization: {gpu_usages[0]['gpu_utilization']}% | Memory Utilization: {gpu_usages[0]['memory_utilization']}%")
 
 
     
@@ -194,13 +197,14 @@ class MnistClassifier:
 
         # Konfiguracja TensorBoard
         log_dir = os.path.join("logs", "fit", datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
-        tensorboard_callback = TensorBoard(log_dir=log_dir, histogram_freq=1)
+        tensorboard_callback = TensorBoard(log_dir=log_dir, histogram_freq=6)
 
-        image_callback = TensorBoardImageCallback(log_dir, train_generator, test_generator)
+        # Callbacks definitions
 
-        # Konfiguracja TensorFlow Profiler
-        profile_dir = os.path.join(log_dir, 'profiler')
-        tf.profiler.experimental.start(profile_dir)
+        system_usage_logger = SystemUsageLogger(log_dir=log_dir, log_frequency=3)
+        image_callback = TensorBoardImageCallback(log_dir, train_generator, test_generator, log_frequency=3)
+        log_gpu_usage_callback = GPUUsageLogger()
+        profiler_callback = ProfilerCallback(log_dir=log_dir, log_frequency=6)
         
         # # Pobieranie jednej partii obrazów i etykiet
         # images, labels = next(train_generator)
@@ -226,6 +230,20 @@ class MnistClassifier:
         # print("Kształt obrazu:", image.shape)
         # print("Etykieta:", labels[0])
 
+        
+
+        history = model.fit(train_generator, 
+                                steps_per_epoch=train_generator.samples // fit_batch_size, 
+                                epochs=fit_epochs, validation_data=test_generator, 
+                                callbacks = [tensorboard_callback, image_callback, system_usage_logger, log_gpu_usage_callback])
+        
+        # Pobieranie danych z `gpu_logger` po zakończeniu trenowania
+        gpu_usage_data = log_gpu_usage_callback.on_train_end()
+
+        # Wyświetlenie historii trenowania oraz danych dotyczących użycia GPU
+        self.display_history(history.history)
+        self.display_combined_history(history.history, gpu_usage_data)
+
         full_history = {
             'accuracy': [],
             'loss': [],
@@ -233,20 +251,41 @@ class MnistClassifier:
             'val_loss': []
         }
 
-        for epoch in range(fit_epochs):
-            history = model.fit(train_generator, steps_per_epoch=train_generator.samples // fit_batch_size, epochs=1, validation_data=test_generator, callbacks = [tensorboard_callback, image_callback])
-            self.log_gpu_usage(epoch + 1)
+        # full_history['accuracy'].append(history.history['accuracy'][0])
+        # full_history['loss'].append(history.history['loss'][0])
+        # full_history['val_accuracy'].append(history.history['val_accuracy'][0])
+        # full_history['val_loss'].append(history.history['val_loss'][0])
+
+        # self.display_history(full_history)
+        # self.display_combined_history(full_history, self.gpu_usage_data)
+
+
+
+
+
+        # for epoch in range(fit_epochs):
+        #     print(f"Starting epoch {epoch + 1}")
+
+        #     system_usage_logger = SystemUsageLogger(log_dir=log_dir, log_frequency=3, epoch=epoch+1)
+
+        #     image_callback = TensorBoardImageCallback(log_dir, train_generator, test_generator, log_frequency=3, epoch=epoch+1)
             
-            full_history['accuracy'].append(history.history['accuracy'][0])
-            full_history['loss'].append(history.history['loss'][0])
-            full_history['val_accuracy'].append(history.history['val_accuracy'][0])
-            full_history['val_loss'].append(history.history['val_loss'][0])
+        #     history = model.fit(train_generator, 
+        #                         steps_per_epoch=train_generator.samples // fit_batch_size, 
+        #                         epochs=1, validation_data=test_generator, 
+        #                         callbacks = [tensorboard_callback, image_callback, system_usage_logger, log_gpu_usage_callback])
+        #     # self.log_gpu_usage(epoch + 1)
 
-        # Zatrzymanie TensorFlow Profiler
-        tf.profiler.experimental.stop()
+        #     full_history['accuracy'].append(history.history['accuracy'][0])
+        #     full_history['loss'].append(history.history['loss'][0])
+        #     full_history['val_accuracy'].append(history.history['val_accuracy'][0])
+        #     full_history['val_loss'].append(history.history['val_loss'][0])
 
-        self.display_history(full_history)
-        self.display_combined_history(full_history, self.gpu_usage_data)
+
+        # # Zatrzymanie TensorFlow Profiler
+        # tf.profiler.experimental.stop()
+
+        
 
         # model.fit(train_generator, steps_per_epoch=train_generator.samples // fit_batch_size, epochs=fit_epochs, validation_data=test_generator)
 
@@ -268,19 +307,118 @@ class MnistClassifier:
 
 
 class TensorBoardImageCallback(tf.keras.callbacks.Callback):
-    def __init__(self, log_dir, train_data, test_data):
+    def __init__(self, log_dir, train_data, test_data, log_frequency=1):
         super().__init__()
         self.log_dir = log_dir
         self.train_data = train_data
         self.test_data = test_data
         self.writer = tf.summary.create_file_writer(os.path.join(log_dir, 'images'))
+        self.log_frequency = log_frequency
 
     def on_epoch_end(self, epoch, logs=None):
-        # Wybierz kilka przykładów z danych treningowych i walidacyjnych
-        train_images, _ = next(self.train_data)
-        test_images, _ = next(self.test_data)
-        
-        # Przygotuj obrazy do zapisu
-        with self.writer.as_default():
-            tf.summary.image('Training Images', train_images, step=epoch)
-            tf.summary.image('Test Images', test_images, step=epoch)
+        if epoch % self.log_frequency == 0:
+            # Wybierz kilka przykładów z danych treningowych i walidacyjnych
+            train_images, _ = next(self.train_data)
+            test_images, _ = next(self.test_data)
+            
+            # Przygotuj obrazy do zapisu
+            with self.writer.as_default():
+                tf.summary.image('Training Images', train_images, step=epoch)
+                tf.summary.image('Test Images', test_images, step=epoch)
+
+class SystemUsageLogger(tf.keras.callbacks.Callback):
+    def __init__(self, log_dir, log_frequency=3):
+        super(SystemUsageLogger, self).__init__()
+        self.log_dir = log_dir
+        self.file_writer = tf.summary.create_file_writer(log_dir)
+        self.log_frequency = log_frequency
+    
+    def on_epoch_end(self, epoch, logs=None):
+        if epoch % self.log_frequency == 0:    
+            # Log system usage
+            memory_info = psutil.virtual_memory()
+            used_ram = memory_info.used / (1024 ** 3)  # Convert to GB
+            available_ram = memory_info.available / (1024 ** 3)  # Convert to GB
+            cpu_usage = psutil.cpu_percent()
+
+            with self.file_writer.as_default():
+                tf.summary.scalar('used_ram', used_ram, step=epoch)
+                tf.summary.scalar('available_ram', available_ram, step=epoch)
+                tf.summary.scalar('cpu_usage', cpu_usage, step=epoch)
+
+class GPUUsageLogger(tf.keras.callbacks.Callback):
+    def __init__(self):
+        super(GPUUsageLogger, self).__init__()
+        nvmlInit()
+        self.device_count = nvmlDeviceGetCount()
+        self.gpu_usage_data = []
+
+    def __del__(self):
+        # Zamykanie NVML przy zniszczeniu obiektu
+        nvmlShutdown()
+
+    def get_gpu_usage(self):
+        gpu_usages = []
+        for i in range(self.device_count):
+            handle = nvmlDeviceGetHandleByIndex(i)
+            info = nvmlDeviceGetMemoryInfo(handle)
+            utilization = nvmlDeviceGetUtilizationRates(handle)
+            gpu_usages.append({
+                'gpu': i,
+                'memory_total': info.total,
+                'memory_free': info.free,
+                'memory_used': info.used,
+                'gpu_utilization': utilization.gpu,
+                'memory_utilization': utilization.memory
+            })
+        return gpu_usages
+    
+    def log_gpu_usage(self, epoch):
+        gpu_usages = self.get_gpu_usage()
+        usage_data = {
+            'epoch': epoch,
+            'gpu_utilization': gpu_usages[0]['gpu_utilization'],
+            'memory_utilization': gpu_usages[0]['memory_utilization']
+        }
+        self.gpu_usage_data.append(usage_data)
+        print(f"Epoch {epoch}: GPU {gpu_usages[0]['gpu']}: Memory Total: {gpu_usages[0]['memory_total']} | Memory Free: {gpu_usages[0]['memory_free']} | Memory Used: {gpu_usages[0]['memory_used']} | GPU Utilization: {gpu_usages[0]['gpu_utilization']}% | Memory Utilization: {gpu_usages[0]['memory_utilization']}%")
+    
+    def on_epoch_end(self, epoch, logs=None):
+        self.log_gpu_usage(epoch+1)
+
+    def on_train_end(self, logs=None):
+        return self.gpu_usage_data
+
+class ProfilerCallback(tf.keras.callbacks.Callback):
+    def __init__(self, log_dir, log_frequency=3):
+        super(ProfilerCallback, self).__init__()
+        self.log_dir = log_dir
+        self.log_frequency = log_frequency
+
+    def on_epoch_begin(self, epoch, logs=None):
+        if epoch % self.log_frequency == 0: 
+            # Konfiguracja TensorFlow Profiler
+            options = tf.profiler.experimental.ProfilerOptions(host_tracer_level=2) # Adjust CPU tracing level. Values are: 1 - critical info only, 2 - info, 3 - verbose. [default value is 2]
+            profile_dir = os.path.join(self.log_dir, 'profiler')
+            tf.profiler.experimental.start(profile_dir, options=options)
+    
+    def on_epoch_end(self, epoch, logs=None):
+        if epoch % self.log_frequency == 0: 
+            # Zatrzymanie TensorFlow Profiler
+            tf.profiler.experimental.stop()
+
+# class ProfilerCallback(tf.keras.callbacks.Callback):
+#     def __init__(self, log_dir):
+#         super(ProfilerCallback, self).__init__()
+#         self.full_history = {
+#             'accuracy': [],
+#             'loss': [],
+#             'val_accuracy': [],
+#             'val_loss': []
+#         }
+
+
+#     def on_epoch_begin(self, epoch, logs=None):
+
+    
+#     def on_epoch_end(self, epoch, logs=None):
