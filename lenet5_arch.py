@@ -30,14 +30,52 @@ class MnistClassifier:
     #     # Zamykanie NVML przy zniszczeniu obiektu
     #     nvmlShutdown()
 
-    def display_history(self, history):
-        pd.DataFrame(history).plot(figsize=(8,5))
-        plt.grid(True)
-        plt.gca().set_ylim(0,1)
+    def display_history(self, history, training_time):
+        # df = pd.DataFrame(history)
+        # ax = df.plot(figsize=(8, 5))
+        # plt.grid(True)
+        # # plt.gca().set_ylim(0, 1)
+
+        # # Dodanie tekstu pod wykresem
+        # plt.subplots_adjust(bottom=0.2)  # Adjust bottom to make space for text
+        # plt.text(0.5, -0.15, f'Czas treningu: {training_time:.2f} sekund', color='red', 
+        #          ha='center', va='top', transform=ax.transAxes, fontsize=12)
+
+        # plt.savefig('out/history.png')
+        # plt.show()
+
+        df = pd.DataFrame(history)
+        
+        fig, ax1 = plt.subplots(figsize=(8, 5))
+
+        # Skala po lewej stronie dla accuracy
+        ax1.plot(df.index, df['accuracy'], 'b-', label='Accuracy')
+        ax1.plot(df.index, df['val_accuracy'], 'g-', label='Validation Accuracy')
+        ax1.set_xlabel('Epoch')
+        ax1.set_ylabel('Accuracy', color='b')
+        ax1.tick_params(axis='y', labelcolor='b')
+        ax1.legend(loc='upper left')
+
+        # Tworzenie drugiej osi y dla loss
+        ax2 = ax1.twinx()
+        ax2.plot(df.index, df['loss'], 'r-', label='Loss')
+        ax2.plot(df.index, df['val_loss'], 'm-', label='Validation Loss')
+        ax2.set_ylabel('Loss', color='r')
+        ax2.tick_params(axis='y', labelcolor='r')
+        ax2.legend(loc='upper right')
+
+        fig.tight_layout()  # Dostosowanie layoutu, żeby elementy się nie nakładały
+        ax1.grid(True)
+
+        # Dodanie tekstu pod wykresem
+        plt.subplots_adjust(bottom=0.2)  # Adjust bottom to make space for text
+        plt.text(0.5, -0.15, f'Czas treningu: {training_time:.2f} sekund', color='red', 
+                 ha='center', va='top', transform=ax1.transAxes, fontsize=12)
+
         plt.savefig('out/history.png')
         plt.show()
 
-    def display_combined_history(self, history, gpu_usage_data):
+    def display_combined_history(self, history, gpu_usage_data, training_time):
         # Tworzenie wykresu łączonego dla historii trenowania i danych GPU
         history_df = pd.DataFrame(history)
         gpu_usage_df = pd.DataFrame(gpu_usage_data)
@@ -49,16 +87,21 @@ class MnistClassifier:
         ax1.plot(history_df.index, history_df['accuracy'], 'b-', label='Accuracy')
         ax1.plot(history_df.index, history_df['val_accuracy'], 'g-', label='Validation Accuracy')
         ax1.plot(history_df.index, history_df['loss'], 'r-', label='Loss')
-        ax1.plot(history_df.index, history_df['val_loss'], 'y-', label='Validation Loss')
+        ax1.plot(history_df.index, history_df['val_loss'], 'm-', label='Validation Loss')
         ax1.legend(loc='upper left')
         
         ax2 = ax1.twinx()
-        ax2.set_ylabel('GPU Utilization (%)')
+        ax2.set_ylabel('GPU Utilization (%) / Memory Utilization (%)')
         ax2.plot(gpu_usage_df.index, gpu_usage_df['gpu_utilization'], 'k-', label='GPU Utilization')
+        ax2.plot(gpu_usage_df.index, gpu_usage_df['memory_utilization'], 'c-', label='Memory Utilization')
         ax2.legend(loc='upper right')
 
         fig.tight_layout()
         plt.grid(True)
+        # Dodanie tekstu pod wykresem
+        plt.subplots_adjust(bottom=0.2)  # Adjust bottom to make space for text
+        plt.text(0.5, -0.15, f'Czas treningu: {training_time:.2f} sekund', color='red', 
+                 ha='center', va='top', transform=ax1.transAxes, fontsize=12)
         plt.savefig('out/combined_history.png')
         plt.show()
 
@@ -238,12 +281,15 @@ class MnistClassifier:
                                 epochs=fit_epochs, validation_data=test_generator, 
                                 callbacks = [profiler_callback, measuring_time, tensorboard_callback, image_callback, system_usage_logger, log_gpu_usage_callback])
         stop_time = time.time()
+
         # Pobieranie danych z `gpu_logger` po zakończeniu trenowania
         gpu_usage_data = log_gpu_usage_callback.on_train_end()
 
+        training_time = measuring_time.on_train_end()
+
         # Wyświetlenie historii trenowania oraz danych dotyczących użycia GPU
-        self.display_history(history.history)
-        self.display_combined_history(history.history, gpu_usage_data)
+        self.display_history(history.history, training_time)
+        self.display_combined_history(history.history, gpu_usage_data, training_time)
 
 
         
