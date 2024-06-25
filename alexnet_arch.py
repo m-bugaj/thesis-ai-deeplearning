@@ -215,7 +215,7 @@ class MnistClassifier:
         history = model.fit(train_generator, 
                                 steps_per_epoch=train_generator.samples // fit_batch_size, 
                                 epochs=fit_epochs, validation_data=test_generator, 
-                                callbacks = [profiler_callback, measuring_time, tensorboard_callback, image_callback, system_usage_logger, log_gpu_usage_callback])
+                                callbacks = [measuring_time, log_gpu_usage_callback, system_usage_logger, tensorboard_callback, image_callback, profiler_callback])
         stop_time = time.time()
 
         # Pobieranie danych z `gpu_logger` po zakończeniu trenowania
