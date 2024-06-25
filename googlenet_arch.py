@@ -265,7 +265,7 @@ class MnistClassifier:
     #     # Zamykanie NVML przy zniszczeniu obiektu
     #     nvmlShutdown()
 
-    def display_history(self, history, training_time):
+    def display_history(self, history, training_time, model_name, arch_name):
         # df = pd.DataFrame(history)
         # ax = df.plot(figsize=(8, 5))
         # plt.grid(True)
@@ -307,10 +307,14 @@ class MnistClassifier:
         plt.text(0.5, -0.15, f'Czas treningu: {training_time:.2f} sekund', color='red', 
                  ha='center', va='top', transform=ax1.transAxes, fontsize=12)
 
-        plt.savefig('out/history.png')
+        disp_dir = os.path.join("out", arch_name)
+        if not os.path.exists(disp_dir):
+            os.makedirs(disp_dir)
+        plt.savefig(disp_dir + '/' + model_name + '__' + datetime.datetime.now().strftime("%Y%m%d-%H%M%S") + '.png')
+
         plt.show()
 
-    def display_combined_history(self, history, gpu_usage_data, training_time):
+    def display_combined_history(self, history, gpu_usage_data, training_time, model_name, arch_name):
         # Tworzenie wykresu łączonego dla historii trenowania i danych GPU
         history_df = pd.DataFrame(history)
         gpu_usage_df = pd.DataFrame(gpu_usage_data)
@@ -337,7 +341,12 @@ class MnistClassifier:
         plt.subplots_adjust(bottom=0.2)  # Adjust bottom to make space for text
         plt.text(0.5, -0.15, f'Czas treningu: {training_time:.2f} sekund', color='red', 
                  ha='center', va='top', transform=ax1.transAxes, fontsize=12)
-        plt.savefig('out/combined_history.png')
+        
+        disp_dir = os.path.join("out", arch_name)
+        if not os.path.exists(disp_dir):
+            os.makedirs(disp_dir)
+        plt.savefig(disp_dir + '/' + 'combined__' + model_name + '__' + datetime.datetime.now().strftime("%Y%m%d-%H%M%S") + '.png')
+
         plt.show()
 
     def inception_module(self, x, filters):
@@ -367,7 +376,7 @@ class MnistClassifier:
         out = concatenate([conv1, conv3, conv5, pool], axis=-1)
         return out
     
-    def train_model(self, model_name, compile_optimizer, compile_loss, fit_epochs, fit_batch_size):
+    def train_model(self, model_name, arch_name, compile_optimizer, compile_loss, fit_epochs, fit_batch_size):
         input_layer = Input(shape=(224, 224, 3))
         # Initial convolution and pooling layers
         # x = Conv2D(64, (7, 7), strides=(2, 2), padding='same', activation='relu')(input_layer)
@@ -442,8 +451,8 @@ class MnistClassifier:
             batch_size=fit_batch_size,
             class_mode='categorical')
 
-                # Konfiguracja TensorBoard
-        log_dir = os.path.join("logs", "fit", datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
+        # Konfiguracja TensorBoard
+        log_dir = os.path.join("logs", "fit", arch_name, model_name + '__' + datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
         tensorboard_callback = TensorBoard(log_dir=log_dir, histogram_freq=6)
 
         # Callbacks definitions
@@ -468,10 +477,23 @@ class MnistClassifier:
         training_time = measuring_time.on_train_end()
 
         # Wyświetlenie historii trenowania oraz danych dotyczących użycia GPU
-        self.display_history(history.history, training_time)
-        self.display_combined_history(history.history, gpu_usage_data, training_time)
+        self.display_history(history.history, training_time, model_name, arch_name)
+        self.display_combined_history(history.history, gpu_usage_data, training_time, model_name, arch_name)
 
-        model.save('models\\' + model_name + '.h5')
+        # Generowanie ścieżki do pliku JSON
+        model_file_path = os.path.join('models', arch_name)
+        if not os.path.exists(model_file_path):
+            os.makedirs(model_file_path)
+
+        # Zapisanie modelu do pliku JSON
+        json_string = model.to_json()
+        json_file_path = os.path.join(model_file_path, 'model__' + model_name + '__' + datetime.datetime.now().strftime("%Y%m%d-%H%M%S") + '.json')
+        with open(json_file_path, 'w') as json_file:
+            json_file.write(json_string)
+
+        # Zapisanie wag modelu
+        weights_file_path = os.path.join(model_file_path, 'model__' + model_name + '__' + datetime.datetime.now().strftime("%Y%m%d-%H%M%S") + '.weights.h5')
+        model.save_weights(weights_file_path)
 
         score = model.evaluate(test_generator, verbose=0)
         print('Test loss:', score[0])
