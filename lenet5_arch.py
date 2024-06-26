@@ -18,7 +18,7 @@ import datetime
 import psutil
 import time
 
-class MnistClassifier:
+class LeNet5:
 
     # def __init__(self):
     #     # Inicjalizacja NVML
@@ -77,7 +77,7 @@ class MnistClassifier:
             os.makedirs(disp_dir)
         plt.savefig(disp_dir + '/' + model_name + '__' + datetime.datetime.now().strftime("%Y%m%d-%H%M%S") + '.png')
 
-        plt.show()
+        # plt.show()
 
     def display_combined_history(self, history, gpu_usage_data, training_time, model_name, arch_name):
         # Tworzenie wykresu łączonego dla historii trenowania i danych GPU
@@ -112,7 +112,7 @@ class MnistClassifier:
             os.makedirs(disp_dir)
         plt.savefig(disp_dir + '/' + 'combined__' + model_name + '__' + datetime.datetime.now().strftime("%Y%m%d-%H%M%S") + '.png')
 
-        plt.show()
+        # plt.show()
 
     # def load_mnist_png(self, data_path):
     #     images = []
@@ -231,7 +231,7 @@ class MnistClassifier:
 
         # Generatory danych
         train_generator = train_datagen.flow_from_directory(
-            'DANE/archive/raw-img',
+            'DANE/etap1/raw-img',
             target_size=(32, 32),  # Update target_size to (32, 32)
             batch_size=fit_batch_size,
             class_mode='categorical',
@@ -240,7 +240,7 @@ class MnistClassifier:
         )
 
         test_generator = test_datagen.flow_from_directory(
-            'DANE/archive/test',
+            'DANE/etap1/test',
             target_size=(32, 32),  # Update target_size to (32, 32)
             batch_size=fit_batch_size,
             class_mode='categorical',
