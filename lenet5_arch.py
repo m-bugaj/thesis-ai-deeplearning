@@ -1,6 +1,6 @@
 import os
 import tensorflow as tf
-from keras.models import Sequential
+from keras.models import Sequential, load_model
 from keras.layers import Flatten, Dense, Conv2D, MaxPooling2D, AveragePooling2D, Dropout
 # from keras.api.preprocessing.image import ImageDataGenerator
 from keras_preprocessing.image import ImageDataGenerator
@@ -13,10 +13,13 @@ import pandas as pd
 from PIL import Image
 import time
 from pynvml import *
-from keras.callbacks import TensorBoard
+from keras.callbacks import TensorBoard, ModelCheckpoint
 import datetime
 import psutil
 import time
+from tensorflow import compat
+from keras import backend as K
+import shutil
 
 class LeNet5:
 
@@ -30,7 +33,7 @@ class LeNet5:
     #     # Zamykanie NVML przy zniszczeniu obiektu
     #     nvmlShutdown()
 
-    def display_history(self, history, training_time, model_name, arch_name):
+    def display_history(self, history, training_time, model_name, arch_name, accuracy, loss):
         # df = pd.DataFrame(history)
         # ax = df.plot(figsize=(8, 5))
         # plt.grid(True)
@@ -56,6 +59,21 @@ class LeNet5:
         ax1.tick_params(axis='y', labelcolor='b')
         ax1.legend(loc='upper left')
 
+        parts = model_name.split('__')
+        model_params = {}
+        for part in parts:
+            key_value = part.split('-', 1)  # Split only on the first dash
+            key = key_value[0]
+            value = key_value[1]
+            if key in model_params:
+                model_params[key] += '-' + value
+            else:
+                model_params[key] = value
+        
+        title_part = f"Batch size: {model_params['bs']}, Activation function: {model_params['af']}, Learning rate: {model_params['lr']}"
+
+        ax1.set_title('Training History + GPU Usage:\n {} - {}'.format(arch_name, title_part))
+
         # Tworzenie drugiej osi y dla loss
         ax2 = ax1.twinx()
         ax2.plot(df.index, df['loss'], 'r-', label='Loss')
@@ -68,9 +86,13 @@ class LeNet5:
         ax1.grid(True)
 
         # Dodanie tekstu pod wykresem
-        plt.subplots_adjust(bottom=0.2)  # Adjust bottom to make space for text
-        plt.text(0.5, -0.15, f'Czas treningu: {training_time:.2f} sekund', color='red', 
+        plt.subplots_adjust(bottom=0.25)  # Adjust bottom to make space for text
+        plt.text(0.5, -0.30, f'Czas treningu: {training_time:.2f} sekund', color='red', 
                  ha='center', va='top', transform=ax1.transAxes, fontsize=12)
+        
+        # Wyświetlenie Accuracy i Loss
+        plt.text(0.5, -0.16, f'Accuracy: {accuracy:.4f}', color='green', ha='center', va='top', transform=ax1.transAxes, fontsize=12)
+        plt.text(0.5, -0.23, f'Loss: {loss:.4f}', color='blue', ha='center', va='top', transform=ax1.transAxes, fontsize=12)
 
         disp_dir = os.path.join("out", arch_name)
         if not os.path.exists(disp_dir):
@@ -79,7 +101,7 @@ class LeNet5:
 
         # plt.show()
 
-    def display_combined_history(self, history, gpu_usage_data, training_time, model_name, arch_name):
+    def display_combined_history(self, history, gpu_usage_data, training_time, model_name, arch_name, accuracy, loss):
         # Tworzenie wykresu łączonego dla historii trenowania i danych GPU
         history_df = pd.DataFrame(history)
         gpu_usage_df = pd.DataFrame(gpu_usage_data)
@@ -93,6 +115,21 @@ class LeNet5:
         ax1.plot(history_df.index, history_df['loss'], 'r-', label='Loss')
         ax1.plot(history_df.index, history_df['val_loss'], 'm-', label='Validation Loss')
         ax1.legend(loc='upper left')
+
+        parts = model_name.split('__')
+        model_params = {}
+        for part in parts:
+            key_value = part.split('-', 1)  # Split only on the first dash
+            key = key_value[0]
+            value = key_value[1]
+            if key in model_params:
+                model_params[key] += '-' + value
+            else:
+                model_params[key] = value
+        
+        title_part = f"Batch size: {model_params['bs']}, Activation function: {model_params['af']}, Learning rate: {model_params['lr']}"
+
+        ax1.set_title('Training History + GPU Usage:\n {} - {}'.format(arch_name, title_part))
         
         ax2 = ax1.twinx()
         ax2.set_ylabel('GPU Utilization (%) / Memory Utilization (%)')
@@ -101,12 +138,17 @@ class LeNet5:
         ax2.legend(loc='upper right')
 
         fig.tight_layout()
+        ax1.grid(True)
         plt.grid(True)
         # Dodanie tekstu pod wykresem
-        plt.subplots_adjust(bottom=0.2)  # Adjust bottom to make space for text
-        plt.text(0.5, -0.15, f'Czas treningu: {training_time:.2f} sekund', color='red', 
+        plt.subplots_adjust(bottom=0.25)  # Adjust bottom to make space for text
+        plt.text(0.5, -0.30, f'Czas treningu: {training_time:.2f} sekund', color='red', 
                  ha='center', va='top', transform=ax1.transAxes, fontsize=12)
         
+        # Wyświetlenie Accuracy i Loss
+        plt.text(0.5, -0.16, f'Accuracy: {accuracy:.4f}', color='green', ha='center', va='top', transform=ax1.transAxes, fontsize=12)
+        plt.text(0.5, -0.23, f'Loss: {loss:.4f}', color='blue', ha='center', va='top', transform=ax1.transAxes, fontsize=12)
+
         disp_dir = os.path.join("out", arch_name)
         if not os.path.exists(disp_dir):
             os.makedirs(disp_dir)
@@ -185,7 +227,7 @@ class LeNet5:
 
 
     
-    def train_model(self, model_name, arch_name, compile_optimizer, compile_loss, fit_epochs, fit_batch_size):
+    def train_model(self, model_name, arch_name, compile_optimizer, compile_loss, fit_epochs, fit_batch_size, log_custom_dir=''):
 
         model = Sequential();
 
@@ -216,7 +258,6 @@ class LeNet5:
 
         # FC3: (None,84) -> (None,10).
         model.add(Dense(10, activation='softmax'))
-
 
         model.compile(optimizer=compile_optimizer, loss=compile_loss, metrics=['accuracy'])
         
@@ -249,15 +290,27 @@ class LeNet5:
         )
 
         # Konfiguracja TensorBoard
-        log_dir = os.path.join("logs", "fit", arch_name, model_name + '__' + datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
-        tensorboard_callback = TensorBoard(log_dir=log_dir, histogram_freq=6)
+        log_dir = os.path.join(log_custom_dir, "logs", "fit", arch_name, model_name + '__' + datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
+        tensorboard_callback = TensorBoard(log_dir=log_dir, histogram_freq=4)
 
         # Callbacks definitions
-        system_usage_logger = SystemUsageLogger(log_dir=log_dir, log_frequency=3)
-        image_callback = TensorBoardImageCallback(log_dir, train_generator, test_generator, log_frequency=3)
+        system_usage_logger = SystemUsageLogger(log_dir=log_dir, log_frequency=4)
+        image_callback = TensorBoardImageCallback(log_dir, train_generator, test_generator, log_frequency=4)
         log_gpu_usage_callback = GPUUsageLogger()
-        profiler_callback = ProfilerCallback(log_dir=log_dir, log_frequency=6)
+        profiler_callback = ProfilerCallback(log_dir=log_dir, log_frequency=8)
         measuring_time = MeasuringTime()
+
+        model_file_path = os.path.join('models', arch_name)
+        if not os.path.exists(model_file_path):
+            os.makedirs(model_file_path)
+        ckpt_file_path_with_name = os.path.join(model_file_path, 'model__' + model_name + '__' + datetime.datetime.now().strftime("%Y%m%d-%H%M%S") + '.ckpt')
+        model_checkpoint_callback = ModelCheckpoint(
+            filepath=ckpt_file_path_with_name,  # Ścieżka do pliku zapisu modelu
+            save_best_only=True,       # Zapisuj tylko najlepszy model
+            monitor='val_accuracy',    # Monitorowana wartość (dokładność walidacyjna)
+            mode='max',                # Tryb maksymalizacji wartości (dla 'accuracy')
+            verbose=1                  # Wyświetl komunikaty o zapisie modelu
+        )
         
         # # Pobieranie jednej partii obrazów i etykiet
         # images, labels = next(train_generator)
@@ -287,8 +340,16 @@ class LeNet5:
 
         history = model.fit(train_generator, 
                                 steps_per_epoch=train_generator.samples // fit_batch_size, 
-                                epochs=fit_epochs, validation_data=test_generator, 
-                                callbacks = [measuring_time, log_gpu_usage_callback, system_usage_logger, tensorboard_callback, image_callback, profiler_callback])
+                                epochs=fit_epochs, 
+                                validation_data=test_generator, 
+                                callbacks = [measuring_time, 
+                                             log_gpu_usage_callback, 
+                                             system_usage_logger, 
+                                             tensorboard_callback, 
+                                             image_callback, 
+                                             profiler_callback,
+                                             model_checkpoint_callback])
+        
         stop_time = time.time()
 
         # Pobieranie danych z `gpu_logger` po zakończeniu trenowania
@@ -296,32 +357,43 @@ class LeNet5:
 
         training_time = measuring_time.on_train_end()
 
-        # Wyświetlenie historii trenowania oraz danych dotyczących użycia GPU
-        self.display_history(history.history, training_time, model_name, arch_name)
-        self.display_combined_history(history.history, gpu_usage_data, training_time, model_name, arch_name)
-
 
         
-        # Generowanie ścieżki do pliku JSON
-        model_file_path = os.path.join('models', arch_name)
-        if not os.path.exists(model_file_path):
-            os.makedirs(model_file_path)
+        # # Generowanie ścieżki do pliku JSON
+        # model_file_path = os.path.join('models', arch_name)
+        # if not os.path.exists(model_file_path):
+        #     os.makedirs(model_file_path)
 
-        # Zapisanie modelu do pliku JSON
-        json_string = model.to_json()
-        json_file_path = os.path.join(model_file_path, 'model__' + model_name + '__' + datetime.datetime.now().strftime("%Y%m%d-%H%M%S") + '.json')
-        with open(json_file_path, 'w') as json_file:
-            json_file.write(json_string)
+        # # Zapisanie modelu do pliku JSON
+        # json_string = model.to_json()
+        # json_file_path = os.path.join(model_file_path, 'model__' + model_name + '__' + datetime.datetime.now().strftime("%Y%m%d-%H%M%S") + '.json')
+        # with open(json_file_path, 'w') as json_file:
+        #     json_file.write(json_string)
 
-        # Zapisanie wag modelu
-        weights_file_path = os.path.join(model_file_path, 'model__' + model_name + '__' + datetime.datetime.now().strftime("%Y%m%d-%H%M%S") + '.weights.h5')
-        model.save_weights(weights_file_path)
+        # # Zapisanie wag modelu
+        # weights_file_path = os.path.join(model_file_path, 'model__' + model_name + '__' + datetime.datetime.now().strftime("%Y%m%d-%H%M%S") + '.weights.h5')
+        # model.save_weights(weights_file_path)
 
+        model = load_model(ckpt_file_path_with_name)
+        model_file_path_with_name = os.path.join(model_file_path, 'model__' + model_name + '__' + datetime.datetime.now().strftime("%Y%m%d-%H%M%S") + '.keras')
+        model.save(model_file_path_with_name)
+        model = load_model(model_file_path_with_name)
+        
         score = model.evaluate(test_generator, verbose=0)
+        
         print('Test loss:', score[0])
         print('Test accuracy:', score[1])
         print("Total time: {}".format(stop_time-start_time))
 
+        # Wyświetlenie historii trenowania oraz danych dotyczących użycia GPU
+        self.display_history(history.history, training_time, model_name, arch_name, score[1], score[0])
+        self.display_combined_history(history.history, gpu_usage_data, training_time, model_name, arch_name, score[1], score[0])
+
+        # # Czyszczenie sesji Keras, aby zwolnić pamięć
+        K.clear_session()
+        compat.v1.reset_default_graph()
+
+        shutil.rmtree(ckpt_file_path_with_name)
 
 class TensorBoardImageCallback(tf.keras.callbacks.Callback):
     def __init__(self, log_dir, train_data, test_data, log_frequency=1):
