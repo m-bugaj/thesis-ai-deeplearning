@@ -20,6 +20,8 @@ import time
 from tensorflow import compat
 from keras import backend as K
 import shutil
+import openpyxl
+from keras.initializers.initializers_v2 import GlorotUniform
 
 class LeNet5:
 
@@ -196,6 +198,13 @@ class LeNet5:
         cropped_image = np.expand_dims(cropped_image, axis=-1)
 
         return cropped_image
+    
+    # Function to find the next available row in a given column
+    def find_next_available_row(self, ws, column):
+        row = 3
+        while ws[f"{column}{row}"].value is not None:
+            row += 1
+        return row
 
     # def get_gpu_usage(self):
     #     gpu_usages = []
@@ -229,18 +238,22 @@ class LeNet5:
     
     def train_model(self, model_name, arch_name, compile_optimizer, compile_loss, fit_epochs, fit_batch_size, activation_function, log_custom_dir=''):
 
+        # Ustawienie seed
+        seed = 42
+        tf.random.set_seed(seed)
+
         model = Sequential();
 
         # LeNet-5 Implementation
 
         # C1: (None,32,32,1) -> (None,28,28,6).
-        model.add(Conv2D(6, kernel_size=(5, 5), strides=(1, 1), activation=activation_function, input_shape=(32,32,1), padding='valid'))
+        model.add(Conv2D(6, kernel_size=(5, 5), strides=(1, 1), activation=activation_function, kernel_initializer=GlorotUniform(seed=seed), input_shape=(32,32,1), padding='valid'))
         model.add(BatchNormalization())
         # P1: (None,28,28,6) -> (None,14,14,6).
         model.add(AveragePooling2D(pool_size=(2, 2), strides=(2, 2), padding='valid'))
 
         # C2: (None,14,14,6) -> (None,10,10,16).
-        model.add(Conv2D(16, kernel_size=(5, 5), strides=(1, 1), activation=activation_function, padding='valid'))
+        model.add(Conv2D(16, kernel_size=(5, 5), strides=(1, 1), activation=activation_function, kernel_initializer=GlorotUniform(seed=seed), padding='valid'))
         model.add(BatchNormalization())
         # P2: (None,10,10,16) -> (None,5,5,16).
         model.add(AveragePooling2D(pool_size=(2, 2), strides=(2, 2), padding='valid'))
@@ -249,15 +262,15 @@ class LeNet5:
         model.add(Flatten())
 
         # FC1: (None, 400) -> (None,120).
-        model.add(Dense(120, activation=activation_function))
+        model.add(Dense(120, activation=activation_function, kernel_initializer=GlorotUniform(seed=seed)))
         model.add(Dropout(0.5))
 
         # FC2: (None,120) -> (None,84).
-        model.add(Dense(84, activation=activation_function))
+        model.add(Dense(84, activation=activation_function, kernel_initializer=GlorotUniform(seed=seed)))
         model.add(Dropout(0.5))
 
         # FC3: (None,84) -> (None,10).
-        model.add(Dense(10, activation='softmax'))
+        model.add(Dense(10, activation='softmax', kernel_initializer=GlorotUniform(seed=seed)))
 
         model.compile(optimizer=compile_optimizer, loss=compile_loss, metrics=['accuracy'])
         
@@ -277,7 +290,7 @@ class LeNet5:
             batch_size=fit_batch_size,
             class_mode='categorical',
             color_mode='grayscale',
-            shuffle=True  # Ensure shuffling of data
+            shuffle=False  # ON / OFF shuffling of data
         )
 
         test_generator = test_datagen.flow_from_directory(
@@ -286,7 +299,7 @@ class LeNet5:
             batch_size=fit_batch_size,
             class_mode='categorical',
             color_mode='grayscale',
-            shuffle=False  # No need to shuffle test data
+            shuffle=False  # ON / OFF shuffling of data
         )
 
         # Konfiguracja TensorBoard
@@ -385,6 +398,78 @@ class LeNet5:
         print('Test accuracy:', score[1])
         print("Total time: {}".format(stop_time-start_time))
 
+        # Obliczanie średnich wartości zużycia GPU oraz pamięci
+        total_gpu_utilization = sum(data['gpu_utilization'] for data in gpu_usage_data)
+        total_memory_utilization = sum(data['memory_utilization'] for data in gpu_usage_data)
+        data_len = len(gpu_usage_data)
+
+        average_gpu_utilization = total_gpu_utilization / data_len if data_len > 0 else 0
+        average_memory_utilization = total_memory_utilization / data_len if data_len > 0 else 0
+
+        print(f"Average GPU Utilization: {average_gpu_utilization}%")
+        print(f"Average Memory Utilization: {average_memory_utilization}%")
+
+        # Obliczanie średnich wartości zużycia RAM oraz CPU
+        used_ram_data = system_usage_logger.used_ram_data
+        cpu_usage_data = system_usage_logger.cpu_usage_data
+
+        average_used_ram = sum(used_ram_data) / len(used_ram_data) if used_ram_data else 0
+        average_cpu_usage = sum(cpu_usage_data) / len(cpu_usage_data) if cpu_usage_data else 0
+
+        print(f"Average Used RAM: {average_used_ram}%")
+        print(f"Average CPU Usage: {average_cpu_usage}%")
+
+        # Path to the Excel file
+        excel_file_path = os.path.join("out", arch_name, 'Excels')
+        if not os.path.exists(excel_file_path):
+            os.makedirs(excel_file_path)
+
+        excel_file_path_with_name = os.path.join(excel_file_path, 'excel_name' + '.xlsx')
+
+        # Load or create a new Excel file
+        if os.path.exists(excel_file_path_with_name):
+            wb = openpyxl.load_workbook(excel_file_path_with_name)
+        else:
+            wb = openpyxl.Workbook()
+
+        # Select the active sheet
+        ws = wb.active
+
+        # Find the next available rows for each column
+        row_accuracy = self.find_next_available_row(ws, 'B')
+        row_loss = self.find_next_available_row(ws, 'C')
+        row_time = self.find_next_available_row(ws, 'D')
+        row_gpu_util = self.find_next_available_row(ws, 'E')
+        row_mem_util = self.find_next_available_row(ws, 'F')
+        row_ram_usage = self.find_next_available_row(ws, 'G')
+        row_cpu_usage = self.find_next_available_row(ws, 'H')
+
+        # Ensure rows align (take the maximum row number to avoid overwriting)
+        next_row = max(row_accuracy, row_loss, row_time, row_gpu_util, row_mem_util, row_ram_usage, row_cpu_usage)
+
+        # Write the data to the next available row
+        ws[f"B{next_row}"] = score[1]
+        ws[f"C{next_row}"] = score[0]
+        ws[f"D{next_row}"] = training_time
+        ws[f"E{next_row}"] = average_gpu_utilization
+        ws[f"F{next_row}"] = average_memory_utilization
+        ws[f"G{next_row}"] = average_used_ram
+        ws[f"H{next_row}"] = average_cpu_usage
+
+        # ws[f"C{next_row}"] = f"{score[0]:.4f}".replace(',', '.')
+        # ws[f"D{next_row}"] = f"{training_time:.2f}".replace(',', '.')
+        # ws[f"E{next_row}"] = f"{average_gpu_utilization:.2f}".replace(',', '.')
+        # ws[f"F{next_row}"] = f"{average_memory_utilization:.2f}".replace(',', '.')
+        # ws[f"G{next_row}"] = f"{average_used_ram:.2f}".replace(',', '.')
+        # ws[f"H{next_row}"] = f"{average_cpu_usage:.2f}".replace(',', '.')
+
+        # Add the formula in column I starting from row 3 down to the current row
+        for row in range(3, next_row + 1):
+            formula = f"=ABS(- (3 * (1 - B{row})) - (2 * C{row}) - (2 * (D{row} / MAX(D$3:D$1048576))) - (1 * (E{row} / 100)) - (1 * (F{row} / 100)) - (1 * (G{row} / 100)) - (1 * (H{row} / 100)))"
+            ws[f"I{row}"].value = formula
+        # Save the workbook
+        wb.save(excel_file_path_with_name)
+
         # Wyświetlenie historii trenowania oraz danych dotyczących użycia GPU
         self.display_history(history.history, training_time, model_name, arch_name, score[1], score[0])
         self.display_combined_history(history.history, gpu_usage_data, training_time, model_name, arch_name, score[1], score[0])
@@ -395,7 +480,7 @@ class LeNet5:
 
         shutil.rmtree(ckpt_file_path_with_name)
 
-        del model, score, history, train_datagen, test_datagen, train_generator, test_generator
+        del model, score, history, train_datagen, test_datagen, train_generator, test_generator, model_checkpoint_callback, compile_optimizer
 
 class TensorBoardImageCallback(tf.keras.callbacks.Callback):
     def __init__(self, log_dir, train_data, test_data, log_frequency=1):
@@ -423,14 +508,20 @@ class SystemUsageLogger(tf.keras.callbacks.Callback):
         self.log_dir = log_dir
         self.file_writer = tf.summary.create_file_writer(log_dir)
         self.log_frequency = log_frequency
+        self.used_ram_data = []
+        self.cpu_usage_data = []
     
     def on_epoch_end(self, epoch, logs=None):
         if epoch % self.log_frequency == 0:    
             # Log system usage
             memory_info = psutil.virtual_memory()
             used_ram = memory_info.used / (1024 ** 3)  # Convert to GB
+            used_ram_percent = memory_info.percent
             available_ram = memory_info.available / (1024 ** 3)  # Convert to GB
             cpu_usage = psutil.cpu_percent()
+
+            self.used_ram_data.append(used_ram_percent)
+            self.cpu_usage_data.append(cpu_usage)
 
             with self.file_writer.as_default():
                 tf.summary.scalar('used_ram', used_ram, step=epoch)
