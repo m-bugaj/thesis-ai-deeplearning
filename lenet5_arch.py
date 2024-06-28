@@ -227,20 +227,20 @@ class LeNet5:
 
 
     
-    def train_model(self, model_name, arch_name, compile_optimizer, compile_loss, fit_epochs, fit_batch_size, log_custom_dir=''):
+    def train_model(self, model_name, arch_name, compile_optimizer, compile_loss, fit_epochs, fit_batch_size, activation_function, log_custom_dir=''):
 
         model = Sequential();
 
         # LeNet-5 Implementation
 
         # C1: (None,32,32,1) -> (None,28,28,6).
-        model.add(Conv2D(6, kernel_size=(5, 5), strides=(1, 1), activation='tanh', input_shape=(32,32,1), padding='valid'))
+        model.add(Conv2D(6, kernel_size=(5, 5), strides=(1, 1), activation=activation_function, input_shape=(32,32,1), padding='valid'))
         model.add(BatchNormalization())
         # P1: (None,28,28,6) -> (None,14,14,6).
         model.add(AveragePooling2D(pool_size=(2, 2), strides=(2, 2), padding='valid'))
 
         # C2: (None,14,14,6) -> (None,10,10,16).
-        model.add(Conv2D(16, kernel_size=(5, 5), strides=(1, 1), activation='tanh', padding='valid'))
+        model.add(Conv2D(16, kernel_size=(5, 5), strides=(1, 1), activation=activation_function, padding='valid'))
         model.add(BatchNormalization())
         # P2: (None,10,10,16) -> (None,5,5,16).
         model.add(AveragePooling2D(pool_size=(2, 2), strides=(2, 2), padding='valid'))
@@ -249,11 +249,11 @@ class LeNet5:
         model.add(Flatten())
 
         # FC1: (None, 400) -> (None,120).
-        model.add(Dense(120, activation='tanh'))
+        model.add(Dense(120, activation=activation_function))
         model.add(Dropout(0.5))
 
         # FC2: (None,120) -> (None,84).
-        model.add(Dense(84, activation='tanh'))
+        model.add(Dense(84, activation=activation_function))
         model.add(Dropout(0.5))
 
         # FC3: (None,84) -> (None,10).
@@ -394,6 +394,8 @@ class LeNet5:
         compat.v1.reset_default_graph()
 
         shutil.rmtree(ckpt_file_path_with_name)
+
+        del model, score, history, train_datagen, test_datagen, train_generator, test_generator
 
 class TensorBoardImageCallback(tf.keras.callbacks.Callback):
     def __init__(self, log_dir, train_data, test_data, log_frequency=1):
