@@ -130,6 +130,7 @@ import time
 from tensorflow import compat
 from keras import backend as K
 import shutil
+import openpyxl
 
 # class GoogLeNet:
 #     @staticmethod
@@ -391,34 +392,41 @@ class GoogLeNet:
 
         # plt.show()
 
-    def inception_module(self, x, filters):
+    # Function to find the next available row in a given column
+    def find_next_available_row(self, ws, column):
+        row = 3
+        while ws[f"{column}{row}"].value is not None:
+            row += 1
+        return row
+
+    def inception_module(self, x, filters, activation_function):
         # 1x1 conv
         conv1 = Conv2D(filters[0], (1, 1), strides=(1, 1), padding='same', kernel_regularizer = l2(0.0002))(x)
         conv1 = BatchNormalization(axis = -1)(conv1)
-        conv1 = Activation("relu")(conv1)
+        conv1 = Activation(activation_function)(conv1)
         # 1x1 conv -> 3x3 conv
         conv3 = Conv2D(filters[1], (1, 1), strides=(1, 1), padding='same', kernel_regularizer = l2(0.0002))(x)
         conv3 = BatchNormalization(axis = -1)(conv3)
-        conv3 = Activation("relu")(conv3)
+        conv3 = Activation(activation_function)(conv3)
         conv3 = Conv2D(filters[2], (3, 3), strides=(1, 1), padding='same', kernel_regularizer = l2(0.0002))(conv3)
         conv3 = BatchNormalization(axis = -1)(conv3)
-        conv3 = Activation("relu")(conv3)
+        conv3 = Activation(activation_function)(conv3)
         # 1x1 conv -> 5x5 conv
         conv5 = Conv2D(filters[3], (1, 1), strides=(1, 1), padding='same', kernel_regularizer = l2(0.0002))(x)
         conv5 = BatchNormalization(axis = -1)(conv5)
-        conv5 = Activation("relu")(conv5)
+        conv5 = Activation(activation_function)(conv5)
         conv5 = Conv2D(filters[4], (5, 5), strides=(1, 1), padding='same', kernel_regularizer = l2(0.0002))(conv5)
         # 3x3 max pooling -> 1x1 conv
         pool = MaxPooling2D((3, 3), strides=(1, 1), padding='same')(x)
         pool = Conv2D(filters[5], (1, 1), strides=(1, 1), padding='same', kernel_regularizer = l2(0.0002))(pool)
         pool = BatchNormalization(axis = -1)(pool)
-        pool = Activation("relu")(pool)
+        pool = Activation(activation_function)(pool)
         # concatenate filters
         # out = Concatenate()([conv1, conv3, conv5, pool])
         out = concatenate([conv1, conv3, conv5, pool], axis=-1)
         return out
     
-    def train_model(self, model_name, arch_name, compile_optimizer, compile_loss, fit_epochs, fit_batch_size, log_custom_dir=''):
+    def train_model(self, model_name, arch_name, compile_optimizer, compile_loss, fit_epochs, fit_batch_size, activation_function, log_custom_dir=''):
         input_layer = Input(shape=(224, 224, 3))
         # Initial convolution and pooling layers
         # x = Conv2D(64, (7, 7), strides=(2, 2), padding='same', activation='relu')(input_layer)
@@ -428,29 +436,29 @@ class GoogLeNet:
 
         x = Conv2D(64, (5, 5), strides=(1, 1), padding='same', kernel_regularizer = l2(0.0002))(input_layer)
         x = BatchNormalization(axis = -1)(x)
-        x = Activation("relu")(x)
+        x = Activation(activation_function)(x)
         x = MaxPooling2D((3, 3), strides=(2, 2), padding='same')(x)
 
         x = Conv2D(64, (1, 1), strides=(1, 1), padding='same', kernel_regularizer = l2(0.0002))(x)
         x = BatchNormalization(axis = -1)(x)
-        x = Activation("relu")(x)
+        x = Activation(activation_function)(x)
         x = Conv2D(192, (3, 3), strides=(1, 1), padding='same', kernel_regularizer = l2(0.0002))(x)
         x = BatchNormalization(axis = -1)(x)
-        x = Activation("relu")(x)
+        x = Activation(activation_function)(x)
         x = MaxPooling2D((3, 3), strides=(2, 2), padding='same')(x)
 
         # Inception modules
-        x = self.inception_module(x, [64, 96, 128, 16, 32, 32])
-        x = self.inception_module(x, [128, 128, 192, 32, 96, 64])
+        x = self.inception_module(x, [64, 96, 128, 16, 32, 32], activation_function)
+        x = self.inception_module(x, [128, 128, 192, 32, 96, 64], activation_function)
         x = MaxPooling2D((3, 3), strides=(2, 2), padding='same')(x)
-        x = self.inception_module(x, [192, 96, 208, 16, 48, 64])
-        x = self.inception_module(x, [160, 112, 224, 24, 64, 64])
-        x = self.inception_module(x, [128, 128, 256, 24, 64, 64])
-        x = self.inception_module(x, [112, 144, 288, 32, 64, 64])
-        x = self.inception_module(x, [256, 160, 320, 32, 128, 128])
+        x = self.inception_module(x, [192, 96, 208, 16, 48, 64], activation_function)
+        x = self.inception_module(x, [160, 112, 224, 24, 64, 64], activation_function)
+        x = self.inception_module(x, [128, 128, 256, 24, 64, 64], activation_function)
+        x = self.inception_module(x, [112, 144, 288, 32, 64, 64], activation_function)
+        x = self.inception_module(x, [256, 160, 320, 32, 128, 128], activation_function)
         x = MaxPooling2D((3, 3), strides=(2, 2), padding='same')(x)
-        x = self.inception_module(x, [256, 160, 320, 32, 128, 128])
-        x = self.inception_module(x, [384, 192, 384, 48, 128, 128])
+        x = self.inception_module(x, [256, 160, 320, 32, 128, 128], activation_function)
+        x = self.inception_module(x, [384, 192, 384, 48, 128, 128], activation_function)
         # Finishing layers
         # x = AveragePooling2D((7, 7), strides=(1, 1))(x)
         x = AveragePooling2D((4, 4))(x)
@@ -548,6 +556,78 @@ class GoogLeNet:
         print('Test accuracy:', score[1])
         print("Total time: {}".format(stop_time-start_time))
 
+        # Obliczanie średnich wartości zużycia GPU oraz pamięci
+        total_gpu_utilization = sum(data['gpu_utilization'] for data in gpu_usage_data)
+        total_memory_utilization = sum(data['memory_utilization'] for data in gpu_usage_data)
+        data_len = len(gpu_usage_data)
+
+        average_gpu_utilization = total_gpu_utilization / data_len if data_len > 0 else 0
+        average_memory_utilization = total_memory_utilization / data_len if data_len > 0 else 0
+
+        print(f"Average GPU Utilization: {average_gpu_utilization}%")
+        print(f"Average Memory Utilization: {average_memory_utilization}%")
+
+        # Obliczanie średnich wartości zużycia RAM oraz CPU
+        used_ram_data = system_usage_logger.used_ram_data
+        cpu_usage_data = system_usage_logger.cpu_usage_data
+
+        average_used_ram = sum(used_ram_data) / len(used_ram_data) if used_ram_data else 0
+        average_cpu_usage = sum(cpu_usage_data) / len(cpu_usage_data) if cpu_usage_data else 0
+
+        print(f"Average Used RAM: {average_used_ram}%")
+        print(f"Average CPU Usage: {average_cpu_usage}%")
+
+        # Path to the Excel file
+        excel_file_path = os.path.join("out", arch_name, 'Excels')
+        if not os.path.exists(excel_file_path):
+            os.makedirs(excel_file_path)
+
+        excel_file_path_with_name = os.path.join(excel_file_path, 'excel_name' + '.xlsx')
+
+        # Load or create a new Excel file
+        if os.path.exists(excel_file_path_with_name):
+            wb = openpyxl.load_workbook(excel_file_path_with_name)
+        else:
+            wb = openpyxl.Workbook()
+
+        # Select the active sheet
+        ws = wb.active
+
+        # Find the next available rows for each column
+        row_accuracy = self.find_next_available_row(ws, 'B')
+        row_loss = self.find_next_available_row(ws, 'C')
+        row_time = self.find_next_available_row(ws, 'D')
+        row_gpu_util = self.find_next_available_row(ws, 'E')
+        row_mem_util = self.find_next_available_row(ws, 'F')
+        row_ram_usage = self.find_next_available_row(ws, 'G')
+        row_cpu_usage = self.find_next_available_row(ws, 'H')
+
+        # Ensure rows align (take the maximum row number to avoid overwriting)
+        next_row = max(row_accuracy, row_loss, row_time, row_gpu_util, row_mem_util, row_ram_usage, row_cpu_usage)
+
+        # Write the data to the next available row
+        ws[f"B{next_row}"] = score[1]
+        ws[f"C{next_row}"] = score[0]
+        ws[f"D{next_row}"] = training_time
+        ws[f"E{next_row}"] = average_gpu_utilization
+        ws[f"F{next_row}"] = average_memory_utilization
+        ws[f"G{next_row}"] = average_used_ram
+        ws[f"H{next_row}"] = average_cpu_usage
+
+        # ws[f"C{next_row}"] = f"{score[0]:.4f}".replace(',', '.')
+        # ws[f"D{next_row}"] = f"{training_time:.2f}".replace(',', '.')
+        # ws[f"E{next_row}"] = f"{average_gpu_utilization:.2f}".replace(',', '.')
+        # ws[f"F{next_row}"] = f"{average_memory_utilization:.2f}".replace(',', '.')
+        # ws[f"G{next_row}"] = f"{average_used_ram:.2f}".replace(',', '.')
+        # ws[f"H{next_row}"] = f"{average_cpu_usage:.2f}".replace(',', '.')
+
+        # Add the formula in column I starting from row 3 down to the current row
+        for row in range(3, next_row + 1):
+            formula = f"=ABS(- (3 * (1 - B{row})) - (2 * C{row}) - (2 * (D{row} / MAX(D$3:D$1048576))) - (1 * (E{row} / 100)) - (1 * (F{row} / 100)) - (1 * (G{row} / 100)) - (1 * (H{row} / 100)))"
+            ws[f"I{row}"].value = formula
+        # Save the workbook
+        wb.save(excel_file_path_with_name)
+
         # Wyświetlenie historii trenowania oraz danych dotyczących użycia GPU
         self.display_history(history.history, training_time, model_name, arch_name, score[1], score[0])
         self.display_combined_history(history.history, gpu_usage_data, training_time, model_name, arch_name, score[1], score[0])
@@ -557,6 +637,9 @@ class GoogLeNet:
         compat.v1.reset_default_graph()
 
         shutil.rmtree(ckpt_file_path_with_name)
+
+        del model, score, history, train_datagen, test_datagen, train_generator, test_generator, model_checkpoint_callback, compile_optimizer
+
 
 
 class TensorBoardImageCallback(tf.keras.callbacks.Callback):
@@ -585,14 +668,20 @@ class SystemUsageLogger(tf.keras.callbacks.Callback):
         self.log_dir = log_dir
         self.file_writer = tf.summary.create_file_writer(log_dir)
         self.log_frequency = log_frequency
+        self.used_ram_data = []
+        self.cpu_usage_data = []
     
     def on_epoch_end(self, epoch, logs=None):
         if epoch % self.log_frequency == 0:    
             # Log system usage
             memory_info = psutil.virtual_memory()
             used_ram = memory_info.used / (1024 ** 3)  # Convert to GB
+            used_ram_percent = memory_info.percent
             available_ram = memory_info.available / (1024 ** 3)  # Convert to GB
             cpu_usage = psutil.cpu_percent()
+
+            self.used_ram_data.append(used_ram_percent)
+            self.cpu_usage_data.append(cpu_usage)
 
             with self.file_writer.as_default():
                 tf.summary.scalar('used_ram', used_ram, step=epoch)
