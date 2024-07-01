@@ -22,6 +22,8 @@ from keras import backend as K
 import shutil
 import openpyxl
 from keras.initializers.initializers_v2 import GlorotUniform
+import random
+import gc
 
 class LeNet5:
 
@@ -239,8 +241,10 @@ class LeNet5:
     def train_model(self, model_name, arch_name, compile_optimizer, compile_loss, fit_epochs, fit_batch_size, activation_function, log_custom_dir=''):
 
         # Ustawienie seed
-        seed = 42
+        seed = 10937
         tf.random.set_seed(seed)
+        random.seed(seed)
+        tf.config.experimental.enable_op_determinism()
 
         model = Sequential();
 
@@ -481,6 +485,8 @@ class LeNet5:
         shutil.rmtree(ckpt_file_path_with_name)
 
         del model, score, history, train_datagen, test_datagen, train_generator, test_generator, model_checkpoint_callback, compile_optimizer
+
+        gc.collect()
 
 class TensorBoardImageCallback(tf.keras.callbacks.Callback):
     def __init__(self, log_dir, train_data, test_data, log_frequency=1):
