@@ -19,6 +19,9 @@ from tensorflow import compat
 from keras import backend as K
 import shutil
 import openpyxl
+from keras.initializers.initializers_v2 import GlorotUniform, HeNormal
+import random
+import gc
 
 class AlexNet:
 
@@ -165,6 +168,12 @@ class AlexNet:
     
     def train_model(self, model_name, arch_name, compile_optimizer, compile_loss, fit_epochs, fit_batch_size, activation_function, log_custom_dir=''):
 
+        # Ustawienie seed
+        seed = 10937
+        tf.random.set_seed(seed)
+        random.seed(seed)
+        tf.config.experimental.enable_op_determinism()
+
         model = Sequential();
 
         # # AlexNet Implementation
@@ -195,25 +204,25 @@ class AlexNet:
         # model.add(Activation("softmax"))
 
         # Warstwa 1: Conv2D -> Activation -> BatchNormalization -> MaxPooling2D
-        model.add(Conv2D(filters=96, kernel_size=(11,11), strides=(4,4), input_shape=(227, 227, 3), activation=activation_function))
+        model.add(Conv2D(filters=96, kernel_size=(11,11), strides=(4,4), input_shape=(227, 227, 3), activation=activation_function, kernel_initializer=HeNormal(seed=seed)))
         model.add(BatchNormalization())
         model.add(MaxPooling2D(pool_size=(3,3), strides=(2,2)))
 
         # Warstwa 2: Conv2D -> Activation -> BatchNormalization -> MaxPooling2D
-        model.add(Conv2D(filters=256, kernel_size=(5,5), padding='valid', activation=activation_function))
+        model.add(Conv2D(filters=256, kernel_size=(5,5), padding='valid', activation=activation_function, kernel_initializer=HeNormal(seed=seed)))
         model.add(BatchNormalization())
         model.add(MaxPooling2D(pool_size=(3,3), strides=(2,2)))
 
         # Warstwa 3: Conv2D -> Activation -> BatchNormalization
-        model.add(Conv2D(filters=384, kernel_size=(3,3), padding='valid', activation=activation_function))
+        model.add(Conv2D(filters=384, kernel_size=(3,3), padding='valid', activation=activation_function, kernel_initializer=HeNormal(seed=seed)))
         model.add(BatchNormalization())
 
         # Warstwa 4: Conv2D -> Activation -> BatchNormalization
-        model.add(Conv2D(filters=384, kernel_size=(3,3), padding='valid', activation=activation_function))
+        model.add(Conv2D(filters=384, kernel_size=(3,3), padding='valid', activation=activation_function, kernel_initializer=HeNormal(seed=seed)))
         model.add(BatchNormalization())
 
         # Warstwa 5: Conv2D -> Activation -> BatchNormalization -> MaxPooling2D
-        model.add(Conv2D(filters=256, kernel_size=(3,3), padding='valid', activation=activation_function))
+        model.add(Conv2D(filters=256, kernel_size=(3,3), padding='valid', activation=activation_function, kernel_initializer=HeNormal(seed=seed)))
         model.add(BatchNormalization())
         model.add(MaxPooling2D(pool_size=(3,3), strides=(2,2)))
 
@@ -221,16 +230,16 @@ class AlexNet:
         model.add(Flatten())
 
         # Warstwa 7: Dense -> Activation -> Dropout
-        model.add(Dense(4096, activation=activation_function))
+        model.add(Dense(4096, activation=activation_function, kernel_initializer=HeNormal(seed=seed)))
         model.add(Dropout(0.5))
 
         # Warstwa 8: Dense -> Activation -> Dropout
-        model.add(Dense(4096, activation=activation_function))
+        model.add(Dense(4096, activation=activation_function, kernel_initializer=HeNormal(seed=seed)))
         model.add(Dropout(0.5))
 
         # Warstwa wyjściowa: Dense -> Activation
         num_classes = 10  # liczba klas
-        model.add(Dense(num_classes, activation='softmax'))
+        model.add(Dense(num_classes, activation='softmax', kernel_initializer=HeNormal(seed=seed)))
 
         # Wyświetlenie podsumowania modelu
         model.summary()
@@ -249,13 +258,17 @@ class AlexNet:
             'DANE/etap1/raw-img',
             target_size=(227, 227),
             batch_size=fit_batch_size,
-            class_mode='categorical')
+            class_mode='categorical',
+            shuffle=False  # ON / OFF shuffling of data
+            )
 
         test_generator = test_datagen.flow_from_directory(
             'DANE/etap1/test',
             target_size=(227, 227),
             batch_size=fit_batch_size,
-            class_mode='categorical')
+            class_mode='categorical',
+            shuffle=False  # ON / OFF shuffling of data
+            )
         
         # Konfiguracja TensorBoard
         log_dir = os.path.join(log_custom_dir, "logs", "fit", arch_name, model_name + '__' + datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
@@ -396,6 +409,7 @@ class AlexNet:
 
         del model, score, history, train_datagen, test_datagen, train_generator, test_generator, model_checkpoint_callback, compile_optimizer
 
+        gc.collect()
 
 
 class TensorBoardImageCallback(tf.keras.callbacks.Callback):
