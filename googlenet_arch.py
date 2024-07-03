@@ -131,6 +131,9 @@ from tensorflow import compat
 from keras import backend as K
 import shutil
 import openpyxl
+from keras.initializers.initializers_v2 import GlorotUniform
+import random
+import gc
 
 # class GoogLeNet:
 #     @staticmethod
@@ -399,26 +402,26 @@ class GoogLeNet:
             row += 1
         return row
 
-    def inception_module(self, x, filters, activation_function):
+    def inception_module(self, x, filters, activation_function, seed):
         # 1x1 conv
-        conv1 = Conv2D(filters[0], (1, 1), strides=(1, 1), padding='same', kernel_regularizer = l2(0.0002))(x)
+        conv1 = Conv2D(filters[0], (1, 1), strides=(1, 1), padding='same', kernel_regularizer = l2(0.0002), kernel_initializer=GlorotUniform(seed=seed))(x)
         conv1 = BatchNormalization(axis = -1)(conv1)
         conv1 = Activation(activation_function)(conv1)
         # 1x1 conv -> 3x3 conv
-        conv3 = Conv2D(filters[1], (1, 1), strides=(1, 1), padding='same', kernel_regularizer = l2(0.0002))(x)
+        conv3 = Conv2D(filters[1], (1, 1), strides=(1, 1), padding='same', kernel_regularizer = l2(0.0002), kernel_initializer=GlorotUniform(seed=seed))(x)
         conv3 = BatchNormalization(axis = -1)(conv3)
         conv3 = Activation(activation_function)(conv3)
-        conv3 = Conv2D(filters[2], (3, 3), strides=(1, 1), padding='same', kernel_regularizer = l2(0.0002))(conv3)
+        conv3 = Conv2D(filters[2], (3, 3), strides=(1, 1), padding='same', kernel_regularizer = l2(0.0002), kernel_initializer=GlorotUniform(seed=seed))(conv3)
         conv3 = BatchNormalization(axis = -1)(conv3)
         conv3 = Activation(activation_function)(conv3)
         # 1x1 conv -> 5x5 conv
-        conv5 = Conv2D(filters[3], (1, 1), strides=(1, 1), padding='same', kernel_regularizer = l2(0.0002))(x)
+        conv5 = Conv2D(filters[3], (1, 1), strides=(1, 1), padding='same', kernel_regularizer = l2(0.0002), kernel_initializer=GlorotUniform(seed=seed))(x)
         conv5 = BatchNormalization(axis = -1)(conv5)
         conv5 = Activation(activation_function)(conv5)
-        conv5 = Conv2D(filters[4], (5, 5), strides=(1, 1), padding='same', kernel_regularizer = l2(0.0002))(conv5)
+        conv5 = Conv2D(filters[4], (5, 5), strides=(1, 1), padding='same', kernel_regularizer = l2(0.0002), kernel_initializer=GlorotUniform(seed=seed))(conv5)
         # 3x3 max pooling -> 1x1 conv
         pool = MaxPooling2D((3, 3), strides=(1, 1), padding='same')(x)
-        pool = Conv2D(filters[5], (1, 1), strides=(1, 1), padding='same', kernel_regularizer = l2(0.0002))(pool)
+        pool = Conv2D(filters[5], (1, 1), strides=(1, 1), padding='same', kernel_regularizer = l2(0.0002), kernel_initializer=GlorotUniform(seed=seed))(pool)
         pool = BatchNormalization(axis = -1)(pool)
         pool = Activation(activation_function)(pool)
         # concatenate filters
@@ -427,6 +430,13 @@ class GoogLeNet:
         return out
     
     def train_model(self, model_name, arch_name, compile_optimizer, compile_loss, fit_epochs, fit_batch_size, activation_function, log_custom_dir=''):
+        
+        # Ustawienie seed
+        seed = 10937
+        tf.random.set_seed(seed)
+        random.seed(seed)
+        tf.config.experimental.enable_op_determinism()
+
         input_layer = Input(shape=(224, 224, 3))
         # Initial convolution and pooling layers
         # x = Conv2D(64, (7, 7), strides=(2, 2), padding='same', activation='relu')(input_layer)
@@ -434,31 +444,31 @@ class GoogLeNet:
         # x = Activation("relu")(x)
         # x = MaxPooling2D((3, 3), strides=(2, 2), padding='same')(x)
 
-        x = Conv2D(64, (5, 5), strides=(1, 1), padding='same', kernel_regularizer = l2(0.0002))(input_layer)
+        x = Conv2D(64, (5, 5), strides=(1, 1), padding='same', kernel_regularizer = l2(0.0002), kernel_initializer=GlorotUniform(seed=seed))(input_layer)
         x = BatchNormalization(axis = -1)(x)
         x = Activation(activation_function)(x)
         x = MaxPooling2D((3, 3), strides=(2, 2), padding='same')(x)
 
-        x = Conv2D(64, (1, 1), strides=(1, 1), padding='same', kernel_regularizer = l2(0.0002))(x)
+        x = Conv2D(64, (1, 1), strides=(1, 1), padding='same', kernel_regularizer = l2(0.0002), kernel_initializer=GlorotUniform(seed=seed))(x)
         x = BatchNormalization(axis = -1)(x)
         x = Activation(activation_function)(x)
-        x = Conv2D(192, (3, 3), strides=(1, 1), padding='same', kernel_regularizer = l2(0.0002))(x)
+        x = Conv2D(192, (3, 3), strides=(1, 1), padding='same', kernel_regularizer = l2(0.0002), kernel_initializer=GlorotUniform(seed=seed))(x)
         x = BatchNormalization(axis = -1)(x)
         x = Activation(activation_function)(x)
         x = MaxPooling2D((3, 3), strides=(2, 2), padding='same')(x)
 
         # Inception modules
-        x = self.inception_module(x, [64, 96, 128, 16, 32, 32], activation_function)
-        x = self.inception_module(x, [128, 128, 192, 32, 96, 64], activation_function)
+        x = self.inception_module(x, [64, 96, 128, 16, 32, 32], activation_function, seed)
+        x = self.inception_module(x, [128, 128, 192, 32, 96, 64], activation_function, seed)
         x = MaxPooling2D((3, 3), strides=(2, 2), padding='same')(x)
-        x = self.inception_module(x, [192, 96, 208, 16, 48, 64], activation_function)
-        x = self.inception_module(x, [160, 112, 224, 24, 64, 64], activation_function)
-        x = self.inception_module(x, [128, 128, 256, 24, 64, 64], activation_function)
-        x = self.inception_module(x, [112, 144, 288, 32, 64, 64], activation_function)
-        x = self.inception_module(x, [256, 160, 320, 32, 128, 128], activation_function)
+        x = self.inception_module(x, [192, 96, 208, 16, 48, 64], activation_function, seed)
+        x = self.inception_module(x, [160, 112, 224, 24, 64, 64], activation_function, seed)
+        x = self.inception_module(x, [128, 128, 256, 24, 64, 64], activation_function, seed)
+        x = self.inception_module(x, [112, 144, 288, 32, 64, 64], activation_function, seed)
+        x = self.inception_module(x, [256, 160, 320, 32, 128, 128], activation_function, seed)
         x = MaxPooling2D((3, 3), strides=(2, 2), padding='same')(x)
-        x = self.inception_module(x, [256, 160, 320, 32, 128, 128], activation_function)
-        x = self.inception_module(x, [384, 192, 384, 48, 128, 128], activation_function)
+        x = self.inception_module(x, [256, 160, 320, 32, 128, 128], activation_function, seed)
+        x = self.inception_module(x, [384, 192, 384, 48, 128, 128], activation_function, seed)
         # Finishing layers
         # x = AveragePooling2D((7, 7), strides=(1, 1))(x)
         x = AveragePooling2D((4, 4))(x)
@@ -467,7 +477,7 @@ class GoogLeNet:
         x = Dropout(0.4)(x)
         x = Flatten()(x)
         # x = Dense(10, activation='softmax')(x)  # Assuming 10 classes for MNIST-like example
-        x = Dense(10, kernel_regularizer = l2(0.0002))(x)
+        x = Dense(10, kernel_regularizer = l2(0.0002), kernel_initializer=GlorotUniform(seed=seed))(x)
         x = Activation("softmax")(x)
 
         # Create model
@@ -493,13 +503,17 @@ class GoogLeNet:
             'DANE/etap1/raw-img',
             target_size=(224, 224),
             batch_size=fit_batch_size,
-            class_mode='categorical')
+            class_mode='categorical',
+            shuffle=False  # ON / OFF shuffling of data
+            )
 
         test_generator = test_datagen.flow_from_directory(
             'DANE/etap1/test',
             target_size=(224, 224),
             batch_size=fit_batch_size,
-            class_mode='categorical')
+            class_mode='categorical',
+            shuffle=False  # ON / OFF shuffling of data
+            )
 
         # Konfiguracja TensorBoard
         log_dir = os.path.join(log_custom_dir, "logs", "fit", arch_name, model_name + '__' + datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
@@ -640,6 +654,7 @@ class GoogLeNet:
 
         del model, score, history, train_datagen, test_datagen, train_generator, test_generator, model_checkpoint_callback, compile_optimizer
 
+        gc.collect()
 
 
 class TensorBoardImageCallback(tf.keras.callbacks.Callback):
