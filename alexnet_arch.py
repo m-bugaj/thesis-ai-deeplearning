@@ -170,6 +170,7 @@ class AlexNet:
 
         # Ustawienie seed
         seed = 10937
+        np.random.seed(seed=seed)
         tf.random.set_seed(seed)
         random.seed(seed)
         tf.config.experimental.enable_op_determinism()
@@ -259,7 +260,8 @@ class AlexNet:
             target_size=(227, 227),
             batch_size=fit_batch_size,
             class_mode='categorical',
-            shuffle=False  # ON / OFF shuffling of data
+            seed=seed,
+            shuffle=True  # ON / OFF shuffling of data
             )
 
         test_generator = test_datagen.flow_from_directory(
@@ -267,7 +269,8 @@ class AlexNet:
             target_size=(227, 227),
             batch_size=fit_batch_size,
             class_mode='categorical',
-            shuffle=False  # ON / OFF shuffling of data
+            seed=seed,
+            shuffle=True  # ON / OFF shuffling of data
             )
         
         # Konfiguracja TensorBoard
