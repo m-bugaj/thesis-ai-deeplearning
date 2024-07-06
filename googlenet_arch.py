@@ -611,7 +611,18 @@ class GoogLeNet:
         # Select the active sheet
         ws = wb.active
 
+        ws[f"A{2}"] = "Name"
+        ws[f"B{2}"] = "Accuracy"
+        ws[f"C{2}"] = "Loss"
+        ws[f"D{2}"] = "Training time"
+        ws[f"E{2}"] = "Average gpu utilization"
+        ws[f"F{2}"] = "Average memory utilization"
+        ws[f"G{2}"] = "Average used ram"
+        ws[f"H{2}"] = "Average cpu usage"
+        ws[f"I{2}"] = "Result (the smaller the better)"
+
         # Find the next available rows for each column
+        row_name = self.find_next_available_row(ws, 'A')
         row_accuracy = self.find_next_available_row(ws, 'B')
         row_loss = self.find_next_available_row(ws, 'C')
         row_time = self.find_next_available_row(ws, 'D')
@@ -621,9 +632,10 @@ class GoogLeNet:
         row_cpu_usage = self.find_next_available_row(ws, 'H')
 
         # Ensure rows align (take the maximum row number to avoid overwriting)
-        next_row = max(row_accuracy, row_loss, row_time, row_gpu_util, row_mem_util, row_ram_usage, row_cpu_usage)
+        next_row = max(row_name, row_accuracy, row_loss, row_time, row_gpu_util, row_mem_util, row_ram_usage, row_cpu_usage)
 
         # Write the data to the next available row
+        ws[f"A{next_row}"] = arch_name + '-' + model_name
         ws[f"B{next_row}"] = score[1]
         ws[f"C{next_row}"] = score[0]
         ws[f"D{next_row}"] = training_time
