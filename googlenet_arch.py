@@ -134,6 +134,7 @@ import openpyxl
 from keras.initializers.initializers_v2 import GlorotUniform
 import random
 import gc
+import numpy as np
 
 # class GoogLeNet:
 #     @staticmethod
@@ -433,6 +434,7 @@ class GoogLeNet:
         
         # Ustawienie seed
         seed = 10937
+        np.random.seed(seed=seed)
         tf.random.set_seed(seed)
         random.seed(seed)
         tf.config.experimental.enable_op_determinism()
@@ -504,6 +506,7 @@ class GoogLeNet:
             target_size=(224, 224),
             batch_size=fit_batch_size,
             class_mode='categorical',
+            seed=seed,
             shuffle=False  # ON / OFF shuffling of data
             )
 
@@ -512,6 +515,7 @@ class GoogLeNet:
             target_size=(224, 224),
             batch_size=fit_batch_size,
             class_mode='categorical',
+            seed=seed,
             shuffle=False  # ON / OFF shuffling of data
             )
 
