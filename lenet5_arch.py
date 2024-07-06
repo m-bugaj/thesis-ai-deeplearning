@@ -242,6 +242,7 @@ class LeNet5:
 
         # Ustawienie seed
         seed = 10937
+        np.random.seed(seed=seed)
         tf.random.set_seed(seed)
         random.seed(seed)
         tf.config.experimental.enable_op_determinism()
@@ -294,6 +295,7 @@ class LeNet5:
             batch_size=fit_batch_size,
             class_mode='categorical',
             color_mode='grayscale',
+            seed=seed,
             shuffle=False  # ON / OFF shuffling of data
         )
 
@@ -303,6 +305,7 @@ class LeNet5:
             batch_size=fit_batch_size,
             class_mode='categorical',
             color_mode='grayscale',
+            seed=seed,
             shuffle=False  # ON / OFF shuffling of data
         )
 
