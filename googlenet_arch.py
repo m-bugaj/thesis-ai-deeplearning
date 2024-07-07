@@ -402,6 +402,7 @@ class GoogLeNet:
         while ws[f"{column}{row}"].value is not None:
             row += 1
         return row
+    
 
     def inception_module(self, x, filters, activation_function, seed):
         # 1x1 conv
@@ -432,6 +433,7 @@ class GoogLeNet:
     
     def train_model(self, model_name, arch_name, compile_optimizer, compile_loss, fit_epochs, fit_batch_size, activation_function, log_custom_dir=''):
         
+
         # Ustawienie seed
         seed = 10937
         np.random.seed(seed=seed)
@@ -507,7 +509,7 @@ class GoogLeNet:
             batch_size=fit_batch_size,
             class_mode='categorical',
             seed=seed,
-            shuffle=False  # ON / OFF shuffling of data
+            shuffle=True  # ON / OFF shuffling of data
             )
 
         test_generator = test_datagen.flow_from_directory(
@@ -516,7 +518,7 @@ class GoogLeNet:
             batch_size=fit_batch_size,
             class_mode='categorical',
             seed=seed,
-            shuffle=False  # ON / OFF shuffling of data
+            shuffle=True  # ON / OFF shuffling of data
             )
 
         # Konfiguracja TensorBoard
@@ -527,7 +529,7 @@ class GoogLeNet:
         system_usage_logger = SystemUsageLogger(log_dir=log_dir, log_frequency=4)
         image_callback = TensorBoardImageCallback(log_dir, train_generator, test_generator, log_frequency=4)
         log_gpu_usage_callback = GPUUsageLogger()
-        profiler_callback = ProfilerCallback(log_dir=log_dir, log_frequency=8)
+        profiler_callback = ProfilerCallback(log_dir=log_dir, batch_size=len(train_generator), log_frequency=8)
         measuring_time = MeasuringTime()
 
         model_file_path = os.path.join('models', arch_name)
@@ -562,7 +564,7 @@ class GoogLeNet:
         # Pobieranie danych z `gpu_logger` po zakończeniu trenowania
         gpu_usage_data = log_gpu_usage_callback.on_train_end()
 
-        training_time = measuring_time.on_train_end()
+        training_time = measuring_time.on_train_end() - profiler_callback.on_train_end()
 
         model = load_model(ckpt_file_path_with_name)
         model_file_path_with_name = os.path.join(model_file_path, 'model__' + model_name + '__' + datetime.datetime.now().strftime("%Y%m%d-%H%M%S") + '.keras')
@@ -763,22 +765,63 @@ class GPUUsageLogger(tf.keras.callbacks.Callback):
         return self.gpu_usage_data
 
 class ProfilerCallback(tf.keras.callbacks.Callback):
-    def __init__(self, log_dir, log_frequency=3):
+    def __init__(self, log_dir, batch_size, log_frequency=3):
         super(ProfilerCallback, self).__init__()
         self.log_dir = log_dir
         self.log_frequency = log_frequency
+        self.batch_size = batch_size
+        self.should_profile = False
+        self.is_profiling = False
+        self.start_time = 0
+        self.profiling_time = 0
 
     def on_epoch_begin(self, epoch, logs=None):
-        if epoch % self.log_frequency == 0: 
-            # Konfiguracja TensorFlow Profiler
-            options = tf.profiler.experimental.ProfilerOptions(host_tracer_level=2) # Adjust CPU tracing level. Values are: 1 - critical info only, 2 - info, 3 - verbose. [default value is 2]
+        if epoch % self.log_frequency == 0:
+            self.should_profile = True
+            # self.session = self.fix_gpu()
+            options = tf.profiler.experimental.ProfilerOptions(host_tracer_level=2)
+            profile_dir = os.path.join(self.log_dir, f'profiler_epoch_{epoch}')
+            # gc.collect()
+            # tf.profiler.experimental.start(profile_dir, options=options)
+            print(f"Profiler started for epoch {epoch}")
+        else:
+            self.should_profile = False
+
+    # def on_epoch_end(self, epoch, logs=None):
+    #     if self.should_profile:
+    #         tf.profiler.experimental.stop()
+    #         # gc.collect()
+    #         # if self.session:
+    #         #     self.session.close()
+    #         # gc.collect()
+    #         print(f"Profiler stopped for epoch {epoch}")
+    #         self.should_profile = False
+
+    def on_batch_begin(self, batch, logs=None):
+        if self.should_profile and batch == int(0.3 * self.batch_size):
+            self.start_time = time.time()
+            options = tf.profiler.experimental.ProfilerOptions(host_tracer_level=2)
             profile_dir = os.path.join(self.log_dir, 'profiler')
             tf.profiler.experimental.start(profile_dir, options=options)
-    
-    def on_epoch_end(self, epoch, logs=None):
-        if epoch % self.log_frequency == 0: 
-            # Zatrzymanie TensorFlow Profiler
+            print(f"Profiling batch {batch} started")
+            end_time = time.time()
+            execution_time = end_time - self.start_time
+            self.profiling_time += execution_time
+        
+    def on_batch_end(self, batch, logs=None):
+        if self.should_profile and batch == int(0.7 * self.batch_size):
+            self.start_time = time.time()
             tf.profiler.experimental.stop()
+            self.is_profiling = False
+            print(f"Profiling batch {batch} ended")
+            end_time = time.time()
+            execution_time = end_time - self.start_time
+            self.profiling_time += execution_time
+            print(f"Profiling time {self.profiling_time}")
+
+    def on_train_end(self, logs=None):
+        print("Profiling start/stop time: {}".format(self.profiling_time))
+        return self.profiling_time
 
 class MeasuringTime(tf.keras.callbacks.Callback):
     def __init__(self):
