@@ -51,7 +51,7 @@ class AlexNet:
 
         df = pd.DataFrame(history)
         
-        fig, ax1 = plt.subplots(figsize=(8, 5))
+        fig, ax1 = plt.subplots(figsize=(9, 6))
 
         # Skala po lewej stronie dla accuracy
         ax1.plot(df.index, df['accuracy'], 'b-', label='Accuracy')
@@ -72,7 +72,7 @@ class AlexNet:
             else:
                 model_params[key] = value
         
-        title_part = f"Batch size: {model_params['bs']}, Activation function: {model_params['af']}, Learning rate: {model_params['lr']}"
+        title_part = f"Batch size: {model_params['bs']}, Activation function: {model_params['af']},\n Optimizer: {model_params['opt']}"
 
         ax1.set_title('Training History + GPU Usage:\n {} - {}'.format(arch_name, title_part))
 
@@ -108,7 +108,7 @@ class AlexNet:
         history_df = pd.DataFrame(history)
         gpu_usage_df = pd.DataFrame(gpu_usage_data)
         
-        fig, ax1 = plt.subplots(figsize=(8, 5))
+        fig, ax1 = plt.subplots(figsize=(9, 6))
 
         ax1.set_xlabel('Epoch')
         ax1.set_ylabel('Accuracy / Loss')
@@ -129,7 +129,7 @@ class AlexNet:
             else:
                 model_params[key] = value
         
-        title_part = f"Batch size: {model_params['bs']}, Activation function: {model_params['af']}, Learning rate: {model_params['lr']}"
+        title_part = f"Batch size: {model_params['bs']}, Activation function: {model_params['af']},\n Optimizer: {model_params['opt']}"
 
         ax1.set_title('Training History + GPU Usage:\n {} - {}'.format(arch_name, title_part))
         
@@ -166,7 +166,7 @@ class AlexNet:
         return row
 
     
-    def train_model(self, model_name, arch_name, compile_optimizer, compile_loss, fit_epochs, fit_batch_size, activation_function, log_custom_dir=''):
+    def train_model(self, model_name, arch_name, compile_optimizer, compile_loss, fit_epochs, fit_batch_size, activation_function, log_custom_dir='', callbacks=[]):
 
         # Ustawienie seed
         seed = 10937
@@ -283,6 +283,7 @@ class AlexNet:
         log_gpu_usage_callback = GPUUsageLogger()
         profiler_callback = ProfilerCallback(log_dir=log_dir, log_frequency=8)
         measuring_time = MeasuringTime()
+        lr_logger_callback = LearningRateLogger()
 
         model_file_path = os.path.join('models', arch_name)
         if not os.path.exists(model_file_path):
@@ -309,7 +310,8 @@ class AlexNet:
                                              tensorboard_callback, 
                                              image_callback, 
                                              profiler_callback,
-                                             model_checkpoint_callback])
+                                             model_checkpoint_callback,
+                                             lr_logger_callback] + callbacks)
         
         stop_time = time.time()
 
@@ -551,3 +553,10 @@ class MeasuringTime(tf.keras.callbacks.Callback):
     def on_train_end(self, logs=None):
         print("Training time: {}".format(self.total_time))
         return self.total_time
+    
+class LearningRateLogger(tf.keras.callbacks.Callback):
+    def on_epoch_begin(self, epoch, logs=None):
+        lr = self.model.optimizer.lr
+        if hasattr(lr, 'numpy'):
+            lr = lr.numpy()
+        print(f'Epoch {epoch + 1}: Current learning rate is {lr}')
