@@ -256,7 +256,7 @@ class AlexNet:
         )
 
         train_generator = train_datagen.flow_from_directory(
-            'DANE/etap1/raw-img',
+            'DANE/archive/raw-img',
             target_size=(227, 227),
             batch_size=fit_batch_size,
             class_mode='categorical',
@@ -265,7 +265,7 @@ class AlexNet:
             )
 
         test_generator = test_datagen.flow_from_directory(
-            'DANE/etap1/test',
+            'DANE/archive/test',
             target_size=(227, 227),
             batch_size=fit_batch_size,
             class_mode='categorical',
@@ -281,7 +281,7 @@ class AlexNet:
         system_usage_logger = SystemUsageLogger(log_dir=log_dir, log_frequency=4)
         image_callback = TensorBoardImageCallback(log_dir, train_generator, test_generator, log_frequency=4)
         log_gpu_usage_callback = GPUUsageLogger()
-        profiler_callback = ProfilerCallback(log_dir=log_dir, log_frequency=8)
+        profiler_callback = ProfilerCallback(log_dir=log_dir, log_frequency=12)
         measuring_time = MeasuringTime()
         lr_logger_callback = LearningRateLogger()
 
@@ -409,7 +409,7 @@ class AlexNet:
 
         # Add the formula in column I starting from row 3 down to the current row
         for row in range(3, next_row + 1):
-            formula = f"=ABS(- (3 * (1 - B{row})) - (2 * C{row}) - (2 * (D{row} / MAX(D$3:D$1048576))) - (1 * (E{row} / 100)) - (1 * (F{row} / 100)) - (1 * (G{row} / 100)) - (1 * (H{row} / 100)))"
+            formula = f"=ABS(- (3 * (1 - B{row})) - (3 * C{row}) - (2 * (D{row} / MAX(D$3:D$1048576))) - (1 * (E{row} / 100)) - (1 * (F{row} / 100)) - (1 * (G{row} / 100)) - (1 * (H{row} / 100)))"
             ws[f"I{row}"].value = formula
         # Save the workbook
         wb.save(excel_file_path_with_name)
